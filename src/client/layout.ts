@@ -293,6 +293,7 @@ export function openTab(
  * @param layout - current tree.
  * @param groupIdValue - owning group.
  * @param sessionId - Session tab to close.
+ * @param activeGroupId - currently focused group to preserve when it survives.
  * @param nextGroup - next persisted group number.
  * @returns the collapsed tree and its next focus owner.
  */
@@ -300,11 +301,12 @@ export function closeTab(
   layout: SessionLayoutNode,
   groupIdValue: string,
   sessionId: SessionId,
+  activeGroupId: string | undefined,
   nextGroup: number,
 ): SessionLayoutResult {
   const updated = removeTab(layout, groupIdValue, sessionId)
   const groups = collectGroups(updated)
-  const active = findGroup(updated, groupIdValue)?.id ?? groups[0]?.id
+  const active = findGroup(updated, activeGroupId ?? groupIdValue)?.id ?? groups[0]?.id
   return { layout: updated, activeGroupId: active, nextGroup }
 }
 

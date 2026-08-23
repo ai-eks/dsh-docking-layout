@@ -124,8 +124,8 @@ export function followFrameSession(
   }
   window.addEventListener('focus', announceFocus)
   window.addEventListener('pointerdown', announceFocus, true)
-  sync()
   const unsubscribe = sessions.list.subscribe(sync)
+  sync()
   return () => {
     unsubscribe()
     window.removeEventListener('focus', announceFocus)

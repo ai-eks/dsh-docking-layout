@@ -502,8 +502,10 @@ export function DockingLayout({
                     type="button"
                     aria-label={`${t('action.closeTab')}: ${title}`}
                     title={t('action.closeTab')}
+                    disabled={pendingFinalClose !== undefined && sessionIds.length <= 1}
                     onClick={() => {
                       if (sessionIds.length <= 1) {
+                        if (pendingFinalClose !== undefined) return
                         setPendingFinalClose({
                           groupId: group.id,
                           outerCurrent: current,
@@ -513,7 +515,8 @@ export function DockingLayout({
                         return
                       }
                       const result = closeTab(
-                        layout, group.id, sessionId, reconciled.nextGroup,
+                        layout, group.id, sessionId,
+                        reconciled.activeGroupId, reconciled.nextGroup,
                       )
                       commit(result)
                     }}

@@ -20,8 +20,8 @@ import {
   followFrameSession, frameSessionId, installFramePresentation,
 } from '../src/client/frame.ts'
 import {
-  collectGroups, collectSessionIds, moveTab, reconcileSessionLayout, resolveDropZone, splitTab,
-  type SessionLayoutNode,
+  closeTab, collectGroups, collectSessionIds, moveTab, reconcileSessionLayout, resolveDropZone,
+  splitTab, type SessionLayoutNode,
 } from '../src/client/layout.ts'
 import { zh } from '../src/client/locales.ts'
 import { createDockingLayoutStore } from '../src/client/stores.ts'
@@ -156,6 +156,25 @@ describe('editor-group operations', () => {
     expect(collectGroups(rejected.layout).map(group => group.tabs)).toEqual([
       [S1, S2], [S3], [S4], [S5],
     ])
+  })
+
+  it('preserves the active group when a background singleton group closes', () => {
+    const layout: SessionLayoutNode = {
+      kind: 'split',
+      axis: 'horizontal',
+      first: { kind: 'group', id: 'group-1', tabs: [S1], active: S1 },
+      second: {
+        kind: 'split',
+        axis: 'vertical',
+        first: { kind: 'group', id: 'group-2', tabs: [S2], active: S2 },
+        second: { kind: 'group', id: 'group-3', tabs: [S3], active: S3 },
+      },
+    }
+
+    const result = closeTab(layout, 'group-3', S3, 'group-2', 4)
+
+    expect(result.activeGroupId).toBe('group-2')
+    expect(collectGroups(result.layout).map(group => group.tabs)).toEqual([[S1], [S2]])
   })
 })
 
@@ -373,6 +392,10 @@ describe('DockingLayout', () => {
     expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
     fireEvent.click(view.getByRole('button', { name: '关闭标签: Alpha' }))
 
+    expect(startSession).toHaveBeenCalledOnce()
+    const pendingClose = view.getByRole<HTMLButtonElement>('button', { name: '关闭标签: Alpha' })
+    expect(pendingClose.disabled).toBe(true)
+    fireEvent.click(pendingClose)
     expect(startSession).toHaveBeenCalledOnce()
     expect(view.getByRole('tab', { name: /^Alpha$/ })).toBeTruthy()
     expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
@@ -929,7 +952,6 @@ describe('plugin wiring', () => {
     const stopFollowing = followFrameSession(sessionService as never, S1, postFrameMessage)
     const removePresentation = installFramePresentation(postFrameMessage)
     expect(open).toHaveBeenCalledWith(S1)
-    for (const listener of listeners) listener()
     expect(postFrameMessage).toHaveBeenCalledWith({
       type: FRAME_READY_MESSAGE,
       sessionId: S1,
