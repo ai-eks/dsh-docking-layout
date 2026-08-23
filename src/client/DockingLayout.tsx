@@ -15,11 +15,13 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { createDockingLayoutStore } from './stores.ts'
 import {
-  MAX_GROUPS, activateTab, closeTab, collectGroups, collectSessionIds,
-  moveTab, openTab, reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab,
-  type DropZone, type SessionLayoutNode, type SessionLayoutResult, type SessionTabGroup,
+  activateTab, canSplitBounds, closeTab, collectGroups, collectSessionIds, moveTab, openTab,
+  reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab, type DropZone,
+  type SessionLayoutNode, type SessionLayoutResult, type SessionTabGroup,
 } from './layout.ts'
-import { isFrameFocusMessage, isFrameNavigateMessage, sessionFrameUrl } from './frame.ts'
+import {
+  isFrameFocusMessage, isFrameNavigateMessage, isMountedFrameMessage, sessionFrameUrl,
+} from './frame.ts'
 import css from './DockingLayout.module.css'
 
 /** Complete props of the root-scoped Docking Layout overlay. */
@@ -65,9 +67,68 @@ interface SurfaceBounds {
   readonly height: number
 }
 
+interface GroupBounds {
+  readonly width: number
+  readonly height: number
+}
+
+interface LayoutMeasurements {
+  readonly compact: boolean
+  readonly groups: ReadonlyMap<string, GroupBounds>
+}
+
+const COMPACT_BREAKPOINT = 760
+const RECENT_FRAME_LIMIT = 2
+
 function equalBounds(left: SurfaceBounds | undefined, right: SurfaceBounds): boolean {
   return left?.left === right.left && left.top === right.top
     && left.width === right.width && left.height === right.height
+}
+
+function equalSessionIds(left: readonly SessionId[], right: readonly SessionId[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index])
+}
+
+function equalMeasurements(left: LayoutMeasurements, right: LayoutMeasurements): boolean {
+  if (left.compact !== right.compact || left.groups.size !== right.groups.size) return false
+  for (const [id, bounds] of right.groups) {
+    const current = left.groups.get(id)
+    if (current?.width !== bounds.width || current.height !== bounds.height) return false
+  }
+  return true
+}
+
+function updateFrameHistory(
+  current: readonly SessionId[],
+  active: readonly SessionId[],
+  open: readonly SessionId[],
+): readonly SessionId[] {
+  const openSet = new Set(open)
+  const activeSet = new Set(active)
+  const next = [
+    ...active,
+    ...current.filter(id => openSet.has(id) && !activeSet.has(id)),
+  ].slice(0, active.length + RECENT_FRAME_LIMIT)
+  return equalSessionIds(current, next) ? current : next
+}
+
+function SessionFrame({
+  sessionId, title,
+}: {
+  readonly sessionId: SessionId
+  readonly title: string
+}): ReactNode {
+  const [src] = useState(() => sessionFrameUrl(sessionId))
+  return (
+    <iframe
+      className={css.sessionFrame}
+      src={src}
+      title={title}
+      allow="clipboard-read; clipboard-write"
+      referrerPolicy="same-origin"
+      data-docking-layout-session-frame={sessionId}
+    />
+  )
 }
 
 /** Matching destination icons for entering and leaving the docking layout. */
@@ -140,9 +201,10 @@ function useConversationSurface(): CSSProperties {
       window.removeEventListener('resize', measure)
     }
   }, [])
-  return bounds === undefined
+  return useMemo(() => bounds === undefined
     ? { visibility: 'hidden' }
-    : { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }
+    : { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height },
+  [bounds])
 }
 
 /**
@@ -191,11 +253,15 @@ export function DockingLayout({
   const [dropTarget, setDropTarget] = useState<DropTarget>()
   const [pendingFinalClose, setPendingFinalClose] = useState<PendingFinalClose>()
   const [pendingFrameReplacement, setPendingFrameReplacement] = useState<PendingFrameReplacement>()
+  const [frameHistory, setFrameHistory] = useState<readonly SessionId[]>([])
+  const [measurements, setMeasurements] = useState<LayoutMeasurements>({
+    compact: false,
+    groups: new Map(),
+  })
   const rootRef = useRef<HTMLElement | null>(null)
+  const groupRefs = useRef(new Map<string, HTMLElement>())
   const groupBodyRefs = useRef(new Map<string, HTMLDivElement>())
   const framePanelRefs = useRef(new Map<SessionId, HTMLDivElement>())
-  const frameOrder = useRef<SessionId[]>([])
-  const frameUrls = useRef(new Map<SessionId, string>())
   const layoutHasMounted = useRef(false)
   const sessionsReady = sessions.phase === 'ready'
   const workspacesReady = workspaceState.phase === 'ready'
@@ -254,27 +320,17 @@ export function DockingLayout({
     ],
   )
   const sessionIds = useMemo(() => collectSessionIds(reconciled.layout), [reconciled.layout])
-  const frameSessionIds = useMemo(() => {
-    const present = new Set(sessionIds)
-    const ordered = frameOrder.current.filter(id => present.has(id))
-    const known = new Set(ordered)
-    for (const id of sessionIds) {
-      if (!known.has(id)) ordered.push(id)
-    }
-    frameOrder.current = ordered
-    return ordered
-  }, [sessionIds])
-  const frameSources = useMemo(() => {
-    const present = new Set(frameSessionIds)
-    for (const id of frameUrls.current.keys()) {
-      if (!present.has(id)) frameUrls.current.delete(id)
-    }
-    for (const id of frameSessionIds) {
-      if (!frameUrls.current.has(id)) frameUrls.current.set(id, sessionFrameUrl(id))
-    }
-    return frameUrls.current
-  }, [frameSessionIds])
   const groups = useMemo(() => collectGroups(reconciled.layout), [reconciled.layout])
+  const activeFrameIds = useMemo(() => groups.map(group => group.active), [groups])
+  const retainedFrameIds = useMemo(() => {
+    const active = new Set(activeFrameIds)
+    const open = new Set(sessionIds)
+    return [
+      ...activeFrameIds,
+      ...frameHistory.filter(id => open.has(id) && !active.has(id)).slice(0, RECENT_FRAME_LIMIT),
+    ]
+  }, [activeFrameIds, frameHistory, sessionIds])
+  const retainedFrameIdSet = useMemo(() => new Set(retainedFrameIds), [retainedFrameIds])
   const currentIsEligible = current !== undefined && eligible.includes(current)
   const persistedMatches = sameLayout(grid.layout, reconciled.layout)
     && grid.activeGroupId === reconciled.activeGroupId
@@ -283,6 +339,10 @@ export function DockingLayout({
   useEffect(() => {
     if (dataReady) previousNavigation.current = current
   }, [current, dataReady])
+
+  useEffect(() => {
+    setFrameHistory(history => updateFrameHistory(history, activeFrameIds, sessionIds))
+  }, [activeFrameIds, sessionIds])
 
   useEffect(() => {
     if (!persistedMatches) {
@@ -310,6 +370,7 @@ export function DockingLayout({
   useEffect(() => {
     const handleFrameMessage = (event: MessageEvent<unknown>): void => {
       if (isFrameNavigateMessage(event) && event.data.replaceSource) {
+        if (!isMountedFrameMessage(event, event.data.sourceSessionId)) return
         setPendingFrameReplacement({
           sourceSessionId: event.data.sourceSessionId,
           sessionId: event.data.sessionId,
@@ -317,7 +378,8 @@ export function DockingLayout({
         return
       }
       if (!isFrameFocusMessage(event) || reconciled.layout === undefined) return
-      const owner = groups.find(group => group.tabs.includes(event.data.sessionId))
+      if (!isMountedFrameMessage(event, event.data.sessionId)) return
+      const owner = groups.find(group => group.active === event.data.sessionId)
       if (owner !== undefined && owner.id !== reconciled.activeGroupId) {
         actions.setLayout(reconciled.layout, owner.id, reconciled.nextGroup)
       }
@@ -363,7 +425,15 @@ export function DockingLayout({
     if (!layoutVisible || reconciled.layout === undefined || root === null) return
     const sync = (): void => {
       const rootRect = root.getBoundingClientRect()
+      const nextGroups = new Map<string, GroupBounds>()
       for (const group of groups) {
+        const element = groupRefs.current.get(group.id)
+        if (element !== undefined) {
+          const rect = element.getBoundingClientRect()
+          if (rect.width > 0 && rect.height > 0) {
+            nextGroups.set(group.id, { width: rect.width, height: rect.height })
+          }
+        }
         const body = groupBodyRefs.current.get(group.id)
         if (body === undefined) continue
         const rect = body.getBoundingClientRect()
@@ -376,10 +446,19 @@ export function DockingLayout({
           panel.style.height = `${rect.height}px`
         }
       }
+      const nextMeasurements = {
+        compact: window.innerWidth <= COMPACT_BREAKPOINT,
+        groups: nextGroups,
+      }
+      setMeasurements(current => (
+        equalMeasurements(current, nextMeasurements) ? current : nextMeasurements
+      ))
     }
     const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(sync)
     resize?.observe(root)
     for (const group of groups) {
+      const element = groupRefs.current.get(group.id)
+      if (element !== undefined) resize?.observe(element)
       const body = groupBodyRefs.current.get(group.id)
       if (body !== undefined) resize?.observe(body)
     }
@@ -389,7 +468,7 @@ export function DockingLayout({
       resize?.disconnect()
       window.removeEventListener('resize', sync)
     }
-  }, [frameSessionIds, groups, layoutVisible, reconciled.activeGroupId, reconciled.layout, surfaceStyle])
+  }, [groups, layoutVisible, reconciled.activeGroupId, reconciled.layout, sessionIds, surfaceStyle])
 
   const commit = (result: SessionLayoutResult): void => {
     actions.setLayout(result.layout, result.activeGroupId, result.nextGroup)
@@ -411,6 +490,17 @@ export function DockingLayout({
 
   const layout = reconciled.layout
   const groupCount = groups.length
+  const hasSplitSpace = (groupId: string, zone: Exclude<DropZone, 'center'>): boolean => {
+    if (measurements.compact) return true
+    const bounds = measurements.groups.get(groupId)
+    return bounds !== undefined && canSplitBounds(bounds, zone)
+  }
+  const elementHasSplitSpace = (
+    element: HTMLElement,
+    zone: Exclude<DropZone, 'center'>,
+  ): boolean => canSplitBounds(
+    element.getBoundingClientRect(), zone, window.innerWidth <= COMPACT_BREAKPOINT,
+  )
   const openIds = new Set(sessionIds)
   const unopened = eligible.filter(id => !openIds.has(id))
   const remaining = new Set(unopened)
@@ -437,10 +527,14 @@ export function DockingLayout({
     if (dragged === undefined) return
     const zone = resolveDropZone(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
     const source = groups.find(group => group.id === dragged.groupId)
-    const canSplit = dragged.groupId === groupId
-      ? groupCount < MAX_GROUPS && source !== undefined && source.tabs.length > 1
-      : groupCount < MAX_GROUPS || source?.tabs.length === 1
-    if (zone !== 'center' && !canSplit) {
+    const canDrop = source !== undefined && (
+      zone === 'center'
+      || (
+        (dragged.groupId !== groupId || source.tabs.length > 1)
+        && (source.tabs.length <= 1 || elementHasSplitSpace(event.currentTarget, zone))
+      )
+    )
+    if (!canDrop) {
       event.dataTransfer.dropEffect = 'none'
       setDropTarget(undefined)
       return
@@ -457,6 +551,19 @@ export function DockingLayout({
     event.preventDefault()
     if (dragged === undefined || dropTarget?.groupId !== targetGroupId) return
     const zone = dropTarget.zone
+    const source = groups.find(group => group.id === dragged.groupId)
+    if (
+      zone !== 'center'
+      && (
+        source === undefined
+        || (dragged.groupId === targetGroupId && source.tabs.length <= 1)
+        || (source.tabs.length > 1 && !elementHasSplitSpace(event.currentTarget, zone))
+      )
+    ) {
+      setDragged(undefined)
+      setDropTarget(undefined)
+      return
+    }
     commit(moveTab(
       layout, dragged.groupId, dragged.sessionId,
       targetGroupId, zone, reconciled.nextGroup,
@@ -472,9 +579,9 @@ export function DockingLayout({
   ): ReactNode => {
     const active = group.active
     const splitFallback = group.tabs.length <= 1 ? unopened[0] : undefined
-    const splitDisabled = (group.tabs.length <= 1 && splitFallback === undefined)
-      || groupCount >= MAX_GROUPS
     const split = (zone: 'right' | 'bottom'): void => {
+      const element = groupRefs.current.get(group.id)
+      if (element === undefined || !elementHasSplitSpace(element, zone)) return
       const source = splitFallback === undefined
         ? { layout, nextGroup: reconciled.nextGroup }
         : openTab(layout, group.id, splitFallback, reconciled.nextGroup)
@@ -493,6 +600,10 @@ export function DockingLayout({
         key={group.id}
         id={`session-group-${group.id}`}
         className={css.group}
+        ref={(element) => {
+          if (element === null) groupRefs.current.delete(group.id)
+          else groupRefs.current.set(group.id, element)
+        }}
         data-active={group.id === reconciled.activeGroupId || undefined}
         data-docking-layout-active-group={group.id === reconciled.activeGroupId || undefined}
         data-docking-layout-top-right={topRight || undefined}
@@ -590,7 +701,11 @@ export function DockingLayout({
               type="button"
               aria-label={t('action.splitRight')}
               title={t('action.splitRight')}
-              disabled={splitDisabled || pendingFinalClose !== undefined}
+              disabled={
+                (group.tabs.length <= 1 && splitFallback === undefined)
+                || !hasSplitSpace(group.id, 'right')
+                || pendingFinalClose !== undefined
+              }
               onClick={() => { split('right') }}
             >
               <IconChevronRightOutline14 />
@@ -599,7 +714,11 @@ export function DockingLayout({
               type="button"
               aria-label={t('action.splitDown')}
               title={t('action.splitDown')}
-              disabled={splitDisabled || pendingFinalClose !== undefined}
+              disabled={
+                (group.tabs.length <= 1 && splitFallback === undefined)
+                || !hasSplitSpace(group.id, 'bottom')
+                || pendingFinalClose !== undefined
+              }
               onClick={() => { split('bottom') }}
             >
               <IconChevronDownOutline14 />
@@ -666,7 +785,7 @@ export function DockingLayout({
       ) : null}
       <div className={css.layout}>{renderLayout(layout)}</div>
       <div className={css.framePool}>
-        {frameSessionIds.map((sessionId) => {
+        {sessionIds.map((sessionId) => {
           const owner = groups.find(group => group.tabs.includes(sessionId))
           if (owner === undefined) return null
           return (
@@ -682,13 +801,12 @@ export function DockingLayout({
                 else framePanelRefs.current.set(sessionId, element)
               }}
             >
-              <iframe
-                className={css.sessionFrame}
-                src={frameSources.get(sessionId)}
-                title={sessions.byId[sessionId]?.displayTitle ?? sessionId}
-                allow="clipboard-read; clipboard-write"
-                referrerPolicy="same-origin"
-              />
+              {retainedFrameIdSet.has(sessionId) ? (
+                <SessionFrame
+                  sessionId={sessionId}
+                  title={sessions.byId[sessionId]?.displayTitle ?? sessionId}
+                />
+              ) : null}
             </div>
           )
         })}

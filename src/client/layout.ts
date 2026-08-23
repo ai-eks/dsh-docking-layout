@@ -1,11 +1,17 @@
 /** Immutable editor-group operations for the browser-only Session layout. */
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 
-/** Maximum number of simultaneously visible conversation groups. */
-export const MAX_GROUPS = 4
-
 /** Edge or center target used by tab drag-and-drop. */
 export type DropZone = 'center' | 'left' | 'right' | 'top' | 'bottom'
+
+/** Minimum usable width of each group created by a split. */
+export const MIN_GROUP_WIDTH = 320
+
+/** Minimum usable height of each group created by a split. */
+export const MIN_GROUP_HEIGHT = 280
+
+/** Fixed divider space shared by the two groups created by a split. */
+export const SPLIT_DIVIDER_SIZE = 1
 
 /** One editor group with a visible active Session tab. */
 export interface SessionTabGroup {
@@ -353,7 +359,6 @@ export function splitTab(
     source === undefined
     || source.tabs.length <= 1
     || !source.tabs.includes(sessionId)
-    || collectGroups(layout).length >= MAX_GROUPS
   ) {
     return { layout, activeGroupId: groupIdValue, nextGroup }
   }
@@ -410,9 +415,6 @@ export function moveTab(
     return { layout, activeGroupId: sourceGroupId, nextGroup }
   }
   if (zone === 'center') return openTab(removed, targetGroupId, sessionId, nextGroup)
-  if (collectGroups(removed).length >= MAX_GROUPS) {
-    return { layout, activeGroupId: sourceGroupId, nextGroup }
-  }
 
   const id = groupId(nextGroup)
   const added: SessionTabGroup = { kind: 'group', id, tabs: [sessionId], active: sessionId }
@@ -424,6 +426,27 @@ export function moveTab(
 }
 
 const DROP_EDGE_FRACTION = 0.24
+
+/**
+ * Check whether a target group can be divided into two usable groups.
+ * Center moves and compact layouts never consume additional visible space.
+ * @param rect - current target group dimensions.
+ * @param zone - requested center or edge target.
+ * @param compact - whether groups are collapsed into a single visible pane.
+ * @returns whether the requested target has enough room.
+ */
+export function canSplitBounds(
+  rect: Pick<DOMRect, 'width' | 'height'>,
+  zone: DropZone,
+  compact = false,
+): boolean {
+  if (compact || zone === 'center') return true
+  return zone === 'left' || zone === 'right'
+    ? (rect.width - SPLIT_DIVIDER_SIZE) / 2 >= MIN_GROUP_WIDTH
+      && rect.height >= MIN_GROUP_HEIGHT
+    : rect.width >= MIN_GROUP_WIDTH
+      && (rect.height - SPLIT_DIVIDER_SIZE) / 2 >= MIN_GROUP_HEIGHT
+}
 
 /**
  * Resolve the nearest edge drop zone, leaving the center as a move target.

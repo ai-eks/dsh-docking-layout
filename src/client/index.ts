@@ -8,7 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { DockingLayout, DockingLayoutFooterAction } from './DockingLayout.tsx'
 import {
   followFrameSession, frameSessionId, installFramePresentation, isFrameNavigateMessage,
-  isFrameReadyMessage, isFrameToggleSidebarMessage,
+  isFrameReadyMessage, isFrameToggleSidebarMessage, isMountedFrameMessage,
 } from './frame.ts'
 import { createDockingLayoutStore } from './stores.ts'
 import { en, zh, type DockingLayoutKey } from './locales.ts'
@@ -18,8 +18,9 @@ export type {
   DockingLayoutFooterActionProps, DockingLayoutProps,
 } from './DockingLayout.tsx'
 export {
-  MAX_GROUPS, activateTab, closeTab, collectGroups, collectSessionIds,
-  moveTab, openTab, reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab,
+  MIN_GROUP_HEIGHT, MIN_GROUP_WIDTH, SPLIT_DIVIDER_SIZE,
+  activateTab, canSplitBounds, closeTab, collectGroups, collectSessionIds, moveTab, openTab,
+  reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab,
 } from './layout.ts'
 export type {
   DropZone, SessionLayoutNode, SessionLayoutResult, SessionSplit, SessionTabGroup,
@@ -30,7 +31,7 @@ export {
   followFrameSession,
   FRAME_TOGGLE_SIDEBAR_MESSAGE, frameSessionId, installFramePresentation,
   isFrameFocusMessage, isFrameNavigateMessage, isFrameReadyMessage,
-  isFrameToggleSidebarMessage, sessionFrameUrl,
+  isFrameToggleSidebarMessage, isMountedFrameMessage, sessionFrameUrl,
 } from './frame.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -83,6 +84,7 @@ export function apply(ctx: ClientContext): void {
     }
     const handleFrameMessage = (event: MessageEvent<unknown>): void => {
       if (isFrameNavigateMessage(event)) {
+        if (!isMountedFrameMessage(event, event.data.sourceSessionId)) return
         pendingNavigation = event.data.sessionId
         requestedPhase = undefined
         requestedCurrent = undefined
@@ -90,10 +92,12 @@ export function apply(ctx: ClientContext): void {
         return
       }
       if (isFrameToggleSidebarMessage(event)) {
+        if (!isMountedFrameMessage(event)) return
         ctx.layout.toggleSidebar()
         return
       }
       if (!isFrameReadyMessage(event)) return
+      if (!isMountedFrameMessage(event, event.data.sessionId)) return
       const current = ctx.sessions.list.getSnapshot().current
       if (current !== undefined) ctx.sessions.open(current)
     }
