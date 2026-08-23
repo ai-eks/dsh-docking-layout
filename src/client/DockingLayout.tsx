@@ -336,7 +336,12 @@ export function DockingLayout({
   useEffect(() => {
     const reopenSelectedSidebarSession = (event: MouseEvent): void => {
       const target = event.target
-      if (!(target instanceof Element) || !layoutVisible || current === undefined) return
+      if (
+        !(target instanceof Element)
+        || !layoutVisible
+        || current === undefined
+        || pendingFinalClose !== undefined
+      ) return
       const row = target.closest('[role="treeitem"][aria-selected="true"]')
       if (row === null || row.closest('[data-slot="sidebar"]') === null) return
       const groupId = reconciled.activeGroupId ?? groups[0]?.id
@@ -351,7 +356,7 @@ export function DockingLayout({
     }
     document.addEventListener('click', reopenSelectedSidebarSession)
     return () => { document.removeEventListener('click', reopenSelectedSidebarSession) }
-  }, [actions, current, groups, layoutVisible, reconciled])
+  }, [actions, current, groups, layoutVisible, pendingFinalClose, reconciled])
 
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -562,7 +567,7 @@ export function DockingLayout({
               aria-label={t('action.openSession')}
               title={t('action.openSession')}
               value=""
-              disabled={unopened.length === 0}
+              disabled={unopened.length === 0 || pendingFinalClose !== undefined}
               onChange={(event) => {
                 const sessionId = event.currentTarget.value as SessionId
                 if (sessionId !== '') {
@@ -585,7 +590,7 @@ export function DockingLayout({
               type="button"
               aria-label={t('action.splitRight')}
               title={t('action.splitRight')}
-              disabled={splitDisabled}
+              disabled={splitDisabled || pendingFinalClose !== undefined}
               onClick={() => { split('right') }}
             >
               <IconChevronRightOutline14 />
@@ -594,7 +599,7 @@ export function DockingLayout({
               type="button"
               aria-label={t('action.splitDown')}
               title={t('action.splitDown')}
-              disabled={splitDisabled}
+              disabled={splitDisabled || pendingFinalClose !== undefined}
               onClick={() => { split('bottom') }}
             >
               <IconChevronDownOutline14 />

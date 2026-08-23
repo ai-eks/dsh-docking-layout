@@ -424,6 +424,15 @@ describe('DockingLayout', () => {
     expect(startSession).toHaveBeenCalledOnce()
     const pendingClose = view.getByRole<HTMLButtonElement>('button', { name: '关闭标签: Alpha' })
     expect(pendingClose.disabled).toBe(true)
+    expect(view.getByRole<HTMLSelectElement>('combobox', {
+      name: '在此分组打开会话',
+    }).disabled).toBe(true)
+    expect(view.getByRole<HTMLButtonElement>('button', {
+      name: '将当前标签拆分到右侧',
+    }).disabled).toBe(true)
+    expect(view.getByRole<HTMLButtonElement>('button', {
+      name: '将当前标签拆分到下方',
+    }).disabled).toBe(true)
     fireEvent.click(pendingClose)
     expect(startSession).toHaveBeenCalledOnce()
     expect(view.getByRole('tab', { name: /^Alpha$/ })).toBeTruthy()
