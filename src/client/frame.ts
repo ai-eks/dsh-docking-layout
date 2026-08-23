@@ -12,6 +12,9 @@ export const FRAME_READY_MESSAGE = 'dsh-docking-layout:frame-ready'
 /** Cross-frame signal emitted when an embedded directory selects another Session. */
 export const FRAME_NAVIGATE_MESSAGE = 'dsh-docking-layout:frame-navigate'
 
+/** Cross-frame signal emitted when a user focuses an embedded Session. */
+export const FRAME_FOCUS_MESSAGE = 'dsh-docking-layout:frame-focus'
+
 /** Cross-frame request for the outer client to toggle its directory sidebar. */
 export const FRAME_TOGGLE_SIDEBAR_MESSAGE = 'dsh-docking-layout:frame-toggle-sidebar'
 
@@ -27,12 +30,22 @@ export interface FrameNavigateMessage {
   readonly sessionId: SessionId
 }
 
+/** Signal used to keep the outer active group aligned with iframe focus. */
+export interface FrameFocusMessage {
+  readonly type: typeof FRAME_FOCUS_MESSAGE
+  readonly sessionId: SessionId
+}
+
 /** Request emitted when an embedded mobile header control is activated. */
 export interface FrameToggleSidebarMessage {
   readonly type: typeof FRAME_TOGGLE_SIDEBAR_MESSAGE
 }
 
-export type FrameMessage = FrameReadyMessage | FrameNavigateMessage | FrameToggleSidebarMessage
+export type FrameMessage =
+  | FrameReadyMessage
+  | FrameNavigateMessage
+  | FrameFocusMessage
+  | FrameToggleSidebarMessage
 
 type PostFrameMessage = (message: FrameMessage) => void
 
@@ -103,8 +116,18 @@ export function followFrameSession(
       postMessage(message)
     }
   }
+  const announceFocus = (): void => {
+    postMessage({ type: FRAME_FOCUS_MESSAGE, sessionId })
+  }
+  window.addEventListener('focus', announceFocus)
+  window.addEventListener('pointerdown', announceFocus, true)
   sync()
-  return sessions.list.subscribe(sync)
+  const unsubscribe = sessions.list.subscribe(sync)
+  return () => {
+    unsubscribe()
+    window.removeEventListener('focus', announceFocus)
+    window.removeEventListener('pointerdown', announceFocus, true)
+  }
 }
 
 /**
@@ -131,6 +154,19 @@ export function isFrameNavigateMessage(
   }
   const candidate = event.data as Partial<FrameNavigateMessage>
   return candidate.type === FRAME_NAVIGATE_MESSAGE
+    && typeof candidate.sessionId === 'string'
+    && candidate.sessionId !== ''
+}
+
+/** Check a same-origin postMessage payload for an embedded Session focus signal. */
+export function isFrameFocusMessage(
+  event: MessageEvent<unknown>,
+): event is MessageEvent<FrameFocusMessage> {
+  if (event.origin !== window.location.origin || typeof event.data !== 'object' || event.data === null) {
+    return false
+  }
+  const candidate = event.data as Partial<FrameFocusMessage>
+  return candidate.type === FRAME_FOCUS_MESSAGE
     && typeof candidate.sessionId === 'string'
     && candidate.sessionId !== ''
 }

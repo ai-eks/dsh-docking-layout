@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-An independent Web UI plugin for DeepSeek Harness. Docking Layout organizes existing non-blank Sessions as tabs in one to four editor groups. It is maintained under `ai-eks` and is not affiliated with DeepSeek AI.
+A Web UI plugin for DeepSeek Harness. Docking Layout organizes conversations as tabs across one to four split editor groups.
 
 ```text
 ┌─ Alpha ─┬─ Beta ─────┬─ split → ─┐
@@ -13,7 +13,7 @@ An independent Web UI plugin for DeepSeek Harness. Docking Layout organizes exis
 └──────────────────────┴────────────┘
 ```
 
-The plugin uses only the stock DSH `shell.overlay` and `sidebar.footer.action` slots and does not modify DeepSeek Harness source. Each tab runs a native DSH Web client addressed to one Session in a same-origin iframe. Transcript, composer, approvals, tool presentation, and Session persistence remain owned by DeepSeek Harness.
+The plugin uses stock DSH client services and the public `shell.overlay` and `sidebar.footer.action` slots; no DeepSeek Harness source changes are required. Each tab runs a native DSH Web client addressed to one Session in a same-origin iframe, preserving the original transcript, composer, approvals, tool presentation, and Session persistence.
 
 ## Install
 
@@ -40,23 +40,25 @@ dsh plugin --profile web remove @ai-eks/dsh-docking-layout
 
 ## Compatibility
 
-The plugin targets DeepSeek Harness `0.1.0-rc.8` and depends only on its public `shell.overlay`, `sidebar.footer.action`, Session list, and `ctx.sessions.open()` APIs. It requires no DSH source changes and does not depend on unpublished `conversation.layout`, multi-Session providers, or `ctx.sessions.watch()` APIs.
+The plugin supports DeepSeek Harness `0.1.0-rc.8` and `0.1.1-rc.2`. It uses the public slot, Session, Workspace, locale, and layout services and does not depend on unpublished `conversation.layout`, multi-Session providers, or `ctx.sessions.watch()` APIs.
 
 It is compatible with `dsh-better-sidebar`: Docking Layout follows the native center conversation column while the outer right and bottom panels remain visible. Changing a Docking Layout tab does not change the outer DSH selection, so it does not swap that plugin's per-Session panel state. Duplicate DSH sidebar and `dsh-better-sidebar` panels inside frames are hidden.
 
 ## Behavior
 
-The initial group opens the current Session and one nearby unarchived Session as tabs. Archived Sessions do not appear in groups or the Open menu. Selecting a Session in the DSH sidebar opens or focuses it in the active group. Dragging a tab to another group's center moves it there; dropping it at a left, right, top, or bottom edge creates an adjacent group. Toolbar buttons can split the active tab right or down, close a group, or return to the native single-column layout. While the layout is disabled, its open action stays in the DSH sidebar footer in both expanded and rail modes.
+The initial group opens the current conversation and one nearby eligible conversation as tabs. The Open menu groups remaining conversations by Workspace and excludes archived, blank, current, and subagent Sessions. Selecting a supported Session in the DSH sidebar opens or focuses it in the active group; archived and subagent routes fall back to the native conversation view.
 
-At most four groups are visible, while each group may contain multiple tabs. Closing a tab or group changes browser layout only and never deletes a Host Session. Open frames remain mounted so their native drafts and view state survive tab switches. Internal tab and group focus stays local to Docking Layout; it does not replace the outer DSH navigation selection or per-session state owned by other plugins.
+Dragging a tab to another group's center moves it there; dropping it at a left, right, top, or bottom edge creates an adjacent group. Toolbar buttons split the active tab right or down. At most four groups are kept in the layout; an unavailable edge split is rejected instead of being converted into a tab move. A group collapses automatically after its final tab moves or closes, so no separate Close Group action is needed.
 
-At widths up to 760 pixels, desktop splits collapse into one full-width group and a group switcher. Touch users use the split buttons because native browser tab dragging is desktop-oriented. A newly selected blank Session temporarily uses the native blank conversation screen; after its first message, it becomes eligible for a tab group.
+Closing a tab changes browser layout only and never deletes its Session. Closing the final tab creates a blank conversation in the same tabbed layout. Switching Workspace for that blank conversation replaces the tab instead of opening unrelated history. Open frames remain mounted so native drafts and view state survive tab switches, and focusing an iframe also makes its group the target for the next sidebar selection.
+
+The enable switch stays in the DSH sidebar footer in both expanded and rail modes. At widths up to 760 pixels, split groups collapse to one full-width active group with a numbered group switcher. Touch users can switch groups and use the split buttons; native tab dragging remains desktop-oriented.
 
 The split tree, tab groups, and enable switch are local browser preferences. The plugin does not copy Session logs, prompts, approvals, or files into its storage. Unloading the plugin closes the embedded DSH clients and releases their connections while leaving all Sessions unchanged.
 
 ## Security and lifecycle
 
-The Host half is empty. The plugin opens no route, Host listener, process, or network port. Every open tab creates a same-origin iframe whose URL adds only the `dsh-docking-session` query parameter; it loads no third-party page. The iframe reuses the current DSH authentication state and establishes its own standard DSH Web connection. Embedded clients call `ctx.sessions.open()` only for listed, unarchived Session ids.
+The plugin has no Host-side runtime and opens no route, listener, process, or network port. Every open tab creates a same-origin iframe whose URL adds only the `dsh-docking-session` query parameter; it loads no third-party page. The iframe reuses the current DSH authentication state and establishes its own standard DSH Web connection. Embedded clients call `ctx.sessions.open()` only for Sessions selected by the outer layout.
 
 Slot registration, locale text, the preference store, frame presentation, and Session-list subscriptions are effect-owned and unwind on plugin disposal or HMR.
 
@@ -78,9 +80,8 @@ None. The plugin does not change model-visible request prefixes.
 
 ## Known limitations
 
-- The global details panel and companion plugins remain bound to the DSH navigation selection, not the locally focused Docking Layout tab.
+- The global details panel and companion plugins remain bound to the outer DSH navigation selection, not the active Docking Layout tab.
 - Every open tab runs a DSH Web client and consumes a separate connection; opening many tabs increases browser memory and connection usage.
-- Narrow screens display one selected group at a time instead of simultaneous columns.
-- Mouse and trackpad users can drag tabs; touch layouts use buttons and the group switcher.
-- Tabs include only non-blank root Sessions, not addressed subagent routes.
+- Mouse and trackpad users can drag tabs; touch layouts use split buttons and the group switcher.
+- Archived Sessions and addressed subagent routes use the native conversation view.
 - This is an early independent plugin with no stability promise.

@@ -14,11 +14,13 @@ import * as invariant from '../src/invariant.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { DockingLayout, DockingLayoutFooterAction } from '../src/client/DockingLayout.tsx'
 import {
-  FRAME_NAVIGATE_MESSAGE, FRAME_READY_MESSAGE, FRAME_TOGGLE_SIDEBAR_MESSAGE,
+  FRAME_FOCUS_MESSAGE, FRAME_NAVIGATE_MESSAGE, FRAME_READY_MESSAGE,
+  FRAME_TOGGLE_SIDEBAR_MESSAGE,
   followFrameSession, frameSessionId, installFramePresentation,
 } from '../src/client/frame.ts'
 import {
   collectGroups, moveTab, reconcileSessionLayout, resolveDropZone, splitTab,
+  type SessionLayoutNode,
 } from '../src/client/layout.ts'
 import { zh } from '../src/client/locales.ts'
 import { createDockingLayoutStore } from '../src/client/stores.ts'
@@ -126,6 +128,33 @@ describe('editor-group operations', () => {
     expect(resolveDropZone(300, 340, rect)).toBe('bottom')
     expect(resolveDropZone(300, 200, rect)).toBe('center')
   })
+
+  it('rejects an edge move that cannot create a fifth group', () => {
+    const atLimit: SessionLayoutNode = {
+      kind: 'split',
+      axis: 'horizontal',
+      first: { kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2 },
+      second: {
+        kind: 'split',
+        axis: 'vertical',
+        first: { kind: 'group', id: 'group-2', tabs: [S3], active: S3 },
+        second: {
+          kind: 'split',
+          axis: 'horizontal',
+          first: { kind: 'group', id: 'group-3', tabs: [S4], active: S4 },
+          second: { kind: 'group', id: 'group-4', tabs: [S5], active: S5 },
+        },
+      },
+    }
+
+    const rejected = moveTab(atLimit, 'group-1', S2, 'group-2', 'right', 5)
+
+    expect(rejected.layout).toBe(atLimit)
+    expect(rejected.activeGroupId).toBe('group-1')
+    expect(collectGroups(rejected.layout).map(group => group.tabs)).toEqual([
+      [S1, S2], [S3], [S4], [S5],
+    ])
+  })
 })
 
 describe('DockingLayout', () => {
@@ -166,6 +195,17 @@ describe('DockingLayout', () => {
     expect(
       view.container.querySelector('[data-docking-layout-top-right]')?.getAttribute('aria-label'),
     ).toBe('会话分组 2')
+
+    expect(view.getByRole('navigation', { name: '切换会话分组' })).toBeTruthy()
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: window.location.origin,
+        data: { type: FRAME_FOCUS_MESSAGE, sessionId: S2 },
+      }))
+    })
+    expect(view.getByRole('article', { name: '会话分组 1' }).hasAttribute('data-active')).toBe(true)
+    fireEvent.click(view.getByRole('button', { name: '显示第 2 组' }))
+    expect(view.getByRole('article', { name: '会话分组 2' }).hasAttribute('data-active')).toBe(true)
 
     expect(view.queryByRole('button', { name: '关闭分组' })).toBeNull()
     expect(view.queryByRole('button', { name: '返回单栏模式' })).toBeNull()
@@ -379,6 +419,54 @@ describe('DockingLayout', () => {
     expect(view.getByRole('tab', { name: /^Gamma$/ })).toBeTruthy()
   })
 
+  it('falls back to the native view for archived and subagent navigation targets', () => {
+    const instance = createDockingLayoutStore().create()
+    const archivedView = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => (
+        selector({ ...sessions, current: S1 })
+      )) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector({
+        ...workspaces, archivedSessionIds: [S1],
+      })) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    expect(archivedView.container.firstChild).toBeNull()
+    expect(document.body.hasAttribute('data-dsh-docking-layout-active')).toBe(false)
+    archivedView.unmount()
+
+    const subagentSessions: SessionListState = {
+      ...sessions,
+      ids: [...sessions.ids, S4],
+      current: S4,
+      byId: {
+        ...sessions.byId,
+        [S4]: {
+          id: S4, displayTitle: 'Child', running: false, blank: false, updatedAt: 4,
+          origin: 'subagent', parentId: S1,
+        },
+      },
+    }
+    const subagentView = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => (
+        selector(subagentSessions)
+      )) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
+        selector(workspaces)
+      )) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    expect(subagentView.container.firstChild).toBeNull()
+    expect(document.body.hasAttribute('data-dsh-docking-layout-active')).toBe(false)
+  })
+
   it('groups the open list by Workspace and matches sidebar visibility filtering', async () => {
     const instance = createDockingLayoutStore().create()
     const visibleSessions: SessionListState = {
@@ -557,6 +645,16 @@ describe('plugin wiring', () => {
       sessionId: S2,
     })
     expect(open).toHaveBeenLastCalledWith(S1)
+    window.dispatchEvent(new FocusEvent('focus'))
+    expect(postFrameMessage).toHaveBeenCalledWith({
+      type: FRAME_FOCUS_MESSAGE,
+      sessionId: S1,
+    })
+    window.dispatchEvent(new Event('pointerdown'))
+    expect(postFrameMessage).toHaveBeenLastCalledWith({
+      type: FRAME_FOCUS_MESSAGE,
+      sessionId: S1,
+    })
     expect(document.body.hasAttribute('data-dsh-docking-frame')).toBe(true)
     expect(shell.hasAttribute('data-dsh-docking-frame-shell')).toBe(true)
     expect(sidebarParent.hasAttribute('data-dsh-docking-frame-sidebar')).toBe(true)

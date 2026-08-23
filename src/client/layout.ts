@@ -309,29 +309,6 @@ export function closeTab(
 }
 
 /**
- * Close one editor group without deleting any Host Sessions.
- * @param layout - current tree.
- * @param groupIdValue - group to close.
- * @param nextGroup - next persisted group number.
- * @returns the collapsed tree and its next focus owner.
- */
-export function closeGroup(
-  layout: SessionLayoutNode,
-  groupIdValue: string,
-  nextGroup: number,
-): SessionLayoutResult {
-  if (collectGroups(layout).length <= 1) {
-    return { layout, activeGroupId: groupIdValue, nextGroup }
-  }
-  const updated = removeGroup(layout, groupIdValue)
-  return {
-    layout: updated,
-    activeGroupId: collectGroups(updated)[0]?.id,
-    nextGroup,
-  }
-}
-
-/**
  * Move the active tab into a new adjacent editor group.
  * @param layout - current tree.
  * @param groupIdValue - source group.
@@ -410,7 +387,7 @@ export function moveTab(
   }
   if (zone === 'center') return openTab(removed, targetGroupId, sessionId, nextGroup)
   if (collectGroups(removed).length >= MAX_GROUPS) {
-    return openTab(removed, targetGroupId, sessionId, nextGroup)
+    return { layout, activeGroupId: sourceGroupId, nextGroup }
   }
 
   const id = groupId(nextGroup)

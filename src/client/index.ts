@@ -16,7 +16,7 @@ export type {
   DockingLayoutFooterActionProps, DockingLayoutProps,
 } from './DockingLayout.tsx'
 export {
-  MAX_GROUPS, activateTab, closeGroup, closeTab, collectGroups, collectSessionIds,
+  MAX_GROUPS, activateTab, closeTab, collectGroups, collectSessionIds,
   moveTab, openTab, reconcileSessionLayout, resolveDropZone, sameLayout, splitTab,
 } from './layout.ts'
 export type {
@@ -24,9 +24,11 @@ export type {
 } from './layout.ts'
 export type { DockingLayoutState } from './stores.ts'
 export {
-  FRAME_NAVIGATE_MESSAGE, FRAME_READY_MESSAGE, FRAME_SESSION_PARAM, followFrameSession,
+  FRAME_FOCUS_MESSAGE, FRAME_NAVIGATE_MESSAGE, FRAME_READY_MESSAGE, FRAME_SESSION_PARAM,
+  followFrameSession,
   FRAME_TOGGLE_SIDEBAR_MESSAGE, frameSessionId, installFramePresentation,
-  isFrameNavigateMessage, isFrameReadyMessage, isFrameToggleSidebarMessage, sessionFrameUrl,
+  isFrameFocusMessage, isFrameNavigateMessage, isFrameReadyMessage,
+  isFrameToggleSidebarMessage, sessionFrameUrl,
 } from './frame.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

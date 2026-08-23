@@ -19,7 +19,7 @@ import {
   moveTab, openTab, reconcileSessionLayout, resolveDropZone, sameLayout, splitTab,
   type DropZone, type SessionLayoutNode, type SessionLayoutResult, type SessionTabGroup,
 } from './layout.ts'
-import { sessionFrameUrl } from './frame.ts'
+import { isFrameFocusMessage, sessionFrameUrl } from './frame.ts'
 import css from './DockingLayout.module.css'
 
 /** Complete props of the root-scoped Docking Layout overlay. */
@@ -238,7 +238,7 @@ export function DockingLayout({
   )
   const sessionIds = useMemo(() => collectSessionIds(reconciled.layout), [reconciled.layout])
   const groups = useMemo(() => collectGroups(reconciled.layout), [reconciled.layout])
-  const currentIsAvailable = current !== undefined && sessions.byId[current] !== undefined
+  const currentIsEligible = current !== undefined && eligible.includes(current)
   const persistedMatches = sameLayout(grid.layout, reconciled.layout)
     && grid.activeGroupId === reconciled.activeGroupId
     && grid.nextGroup === reconciled.nextGroup
@@ -264,7 +264,19 @@ export function DockingLayout({
     }
   }, [current, pendingFinalClose, persistedMatches])
 
-  const layoutVisible = grid.enabled && currentIsAvailable
+  useEffect(() => {
+    const focusGroup = (event: MessageEvent<unknown>): void => {
+      if (!isFrameFocusMessage(event) || reconciled.layout === undefined) return
+      const owner = groups.find(group => group.tabs.includes(event.data.sessionId))
+      if (owner !== undefined && owner.id !== reconciled.activeGroupId) {
+        actions.setLayout(reconciled.layout, owner.id, reconciled.nextGroup)
+      }
+    }
+    window.addEventListener('message', focusGroup)
+    return () => { window.removeEventListener('message', focusGroup) }
+  }, [actions, groups, reconciled])
+
+  const layoutVisible = grid.enabled && currentIsEligible
   useEffect(() => {
     document.body.toggleAttribute('data-dsh-docking-layout-active', layoutVisible)
     return () => { document.body.removeAttribute('data-dsh-docking-layout-active') }
@@ -313,9 +325,17 @@ export function DockingLayout({
   }
   const dragOver = (event: DragEvent<HTMLElement>, groupId: string): void => {
     if (dragged === undefined) return
+    const zone = resolveDropZone(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
+    const source = groups.find(group => group.id === dragged.groupId)
+    const canSplit = groupCount < MAX_GROUPS
+      || (dragged.groupId !== groupId && source?.tabs.length === 1)
+    if (zone !== 'center' && !canSplit) {
+      event.dataTransfer.dropEffect = 'none'
+      setDropTarget(undefined)
+      return
+    }
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
-    const zone = resolveDropZone(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
     setDropTarget(currentTarget => (
       currentTarget?.groupId === groupId && currentTarget.zone === zone
         ? currentTarget
@@ -324,8 +344,8 @@ export function DockingLayout({
   }
   const drop = (event: DragEvent<HTMLElement>, targetGroupId: string): void => {
     event.preventDefault()
-    if (dragged === undefined) return
-    const zone = dropTarget?.groupId === targetGroupId ? dropTarget.zone : 'center'
+    if (dragged === undefined || dropTarget?.groupId !== targetGroupId) return
+    const zone = dropTarget.zone
     commit(moveTab(
       layout, dragged.groupId, dragged.sessionId,
       targetGroupId, zone, reconciled.nextGroup,
@@ -363,6 +383,7 @@ export function DockingLayout({
         id={`session-group-${group.id}`}
         className={css.group}
         data-active={group.id === reconciled.activeGroupId || undefined}
+        data-docking-layout-active-group={group.id === reconciled.activeGroupId || undefined}
         data-docking-layout-top-right={topRight || undefined}
         aria-label={t('group.label', { index: index + 1 })}
         onPointerDownCapture={focusGroup}
@@ -518,6 +539,23 @@ export function DockingLayout({
       data-group-count={groupCount}
       data-dragging={dragged !== undefined || undefined}
     >
+      {groupCount > 1 ? (
+        <nav className={css.groupSwitcher} aria-label={t('group.switcher')}>
+          {groups.map((group, index) => (
+            <button
+              key={group.id}
+              type="button"
+              aria-label={t('group.switch', { index: index + 1 })}
+              aria-pressed={group.id === reconciled.activeGroupId}
+              onClick={() => {
+                actions.setLayout(layout, group.id, reconciled.nextGroup)
+              }}
+            >
+              {index + 1}
+            </button>
+          ))}
+        </nav>
+      ) : null}
       <div className={css.layout}>{renderLayout(layout)}</div>
     </section>
   )
