@@ -11,6 +11,10 @@
   pointer-events: auto;
 }
 
+:global(body[data-dsh-docking-layout-active]) button[data-mobile-nav='fab'] {
+  display: none !important;
+}
+
 .layout,
 .split,
 .group,
@@ -56,6 +60,7 @@
   display: flex;
   flex: none;
   align-items: stretch;
+  box-sizing: border-box;
   min-width: 0;
   height: 38px;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
@@ -157,10 +162,14 @@
   padding: 4px 5px;
 }
 
+/* The collapsed better-sidebar owns a 72px toggle rail in the viewport's
+   top-right corner. Only the group that reaches that corner yields to it. */
+body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
+  margin-right: 72px;
+}
+
 .groupActions button,
-.openSelect,
-.emptyActions button,
-.mobileGroups button {
+.openSelect {
   min-height: 28px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -178,8 +187,7 @@
 }
 
 .groupActions button:hover,
-.openSelect:hover,
-.emptyActions button:hover {
+.openSelect:hover {
   border-color: var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
@@ -192,7 +200,7 @@
 }
 
 .openSelect {
-  width: 58px;
+  width: 64px;
   padding: 0 5px;
   background: var(--dsw-alias-bg-layer-1);
   font-size: 12px;
@@ -212,6 +220,10 @@
   height: 100%;
   border: 0;
   background: var(--dsw-alias-bg-base);
+}
+
+.root[data-dragging] .sessionFrame {
+  pointer-events: none;
 }
 
 .tabPanel[hidden] {
@@ -245,10 +257,6 @@
 
 .dropIndicator[data-zone='bottom'] {
   inset: 50% 0 0;
-}
-
-.mobileGroups {
-  display: none;
 }
 
 .footerAction {
@@ -292,18 +300,6 @@
   white-space: nowrap;
 }
 
-.emptyActions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1);
-}
-
-.emptyActions button {
-  padding: 4px 10px;
-}
-
 .empty {
   display: flex;
   flex: 1;
@@ -317,75 +313,6 @@
 }
 
 @media (max-width: 760px) {
-  .mobileGroups {
-    display: flex;
-    flex: none;
-    gap: 5px;
-    overflow-x: auto;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--dsw-alias-border-l2);
-    background: var(--dsw-alias-bg-layer-1);
-  }
-
-  .mobileGroups button {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 6px;
-    align-items: center;
-    max-width: 190px;
-    padding: 4px 9px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .mobileGroups button span {
-    display: grid;
-    flex: none;
-    place-items: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 5px;
-    background: var(--dsw-alias-bg-layer-2);
-    font-size: 11px;
-  }
-
-  .mobileGroups button[aria-selected='true'] {
-    border-color: var(--dsw-alias-state-business-primary);
-    background: var(--dsw-alias-bg-base);
-    color: var(--dsw-alias-state-business-primary);
-  }
-
-  .layout {
-    display: block;
-    overflow: hidden;
-  }
-
-  .split {
-    display: contents;
-  }
-
-  .divider {
-    display: none;
-  }
-
-  .group {
-    display: none;
-    height: 100%;
-  }
-
-  .group[data-mobile-active] {
-    display: flex;
-  }
-
-  .group[data-active] .groupHeader {
-    box-shadow: none;
-  }
-
-  .groupHeader {
-    height: 40px;
-  }
-
   .tab {
     flex-basis: 150px;
     min-width: 76px;
@@ -400,6 +327,6 @@
   }
 
   .openSelect {
-    width: 50px;
+    width: 60px;
   }
 }

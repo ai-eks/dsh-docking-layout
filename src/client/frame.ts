@@ -9,10 +9,35 @@ export const FRAME_SESSION_PARAM = 'dsh-docking-session'
 /** Cross-frame signal emitted after an embedded client selects its addressed Session. */
 export const FRAME_READY_MESSAGE = 'dsh-docking-layout:frame-ready'
 
+/** Cross-frame signal emitted when an embedded directory selects another Session. */
+export const FRAME_NAVIGATE_MESSAGE = 'dsh-docking-layout:frame-navigate'
+
+/** Cross-frame request for the outer client to toggle its directory sidebar. */
+export const FRAME_TOGGLE_SIDEBAR_MESSAGE = 'dsh-docking-layout:frame-toggle-sidebar'
+
 /** Message body accepted from same-origin embedded DSH clients. */
 export interface FrameReadyMessage {
   readonly type: typeof FRAME_READY_MESSAGE
   readonly sessionId: SessionId
+}
+
+/** Request for the outer client to route one embedded directory selection. */
+export interface FrameNavigateMessage {
+  readonly type: typeof FRAME_NAVIGATE_MESSAGE
+  readonly sessionId: SessionId
+}
+
+/** Request emitted when an embedded mobile header control is activated. */
+export interface FrameToggleSidebarMessage {
+  readonly type: typeof FRAME_TOGGLE_SIDEBAR_MESSAGE
+}
+
+export type FrameMessage = FrameReadyMessage | FrameNavigateMessage | FrameToggleSidebarMessage
+
+type PostFrameMessage = (message: FrameMessage) => void
+
+function postToParent(message: FrameMessage): void {
+  if (window.parent !== window) window.parent.postMessage(message, window.location.origin)
 }
 
 /**
@@ -51,7 +76,11 @@ export function sessionFrameUrl(
  * @param sessionId - fixed frame address.
  * @returns the list subscription disposer.
  */
-export function followFrameSession(sessions: ISessions, sessionId: SessionId): () => void {
+export function followFrameSession(
+  sessions: ISessions,
+  sessionId: SessionId,
+  postMessage: PostFrameMessage = postToParent,
+): () => void {
   let requested = false
   let announced = false
   const sync = (): void => {
@@ -59,16 +88,19 @@ export function followFrameSession(sessions: ISessions, sessionId: SessionId): (
     if (state.byId[sessionId] === undefined) return
     if (state.current !== sessionId) {
       if (!requested) {
+        if (announced && state.current !== undefined && state.byId[state.current] !== undefined) {
+          postMessage({ type: FRAME_NAVIGATE_MESSAGE, sessionId: state.current })
+        }
         requested = true
         sessions.open(sessionId)
       }
       return
     }
     requested = false
-    if (!announced && window.parent !== window) {
+    if (!announced) {
       announced = true
       const message: FrameReadyMessage = { type: FRAME_READY_MESSAGE, sessionId }
-      window.parent.postMessage(message, window.location.origin)
+      postMessage(message)
     }
   }
   sync()
@@ -90,6 +122,29 @@ export function isFrameReadyMessage(event: MessageEvent<unknown>): event is Mess
     && candidate.sessionId !== ''
 }
 
+/** Check a same-origin postMessage payload for an embedded directory selection. */
+export function isFrameNavigateMessage(
+  event: MessageEvent<unknown>,
+): event is MessageEvent<FrameNavigateMessage> {
+  if (event.origin !== window.location.origin || typeof event.data !== 'object' || event.data === null) {
+    return false
+  }
+  const candidate = event.data as Partial<FrameNavigateMessage>
+  return candidate.type === FRAME_NAVIGATE_MESSAGE
+    && typeof candidate.sessionId === 'string'
+    && candidate.sessionId !== ''
+}
+
+/** Check a same-origin postMessage payload for an outer-sidebar toggle request. */
+export function isFrameToggleSidebarMessage(
+  event: MessageEvent<unknown>,
+): event is MessageEvent<FrameToggleSidebarMessage> {
+  if (event.origin !== window.location.origin || typeof event.data !== 'object' || event.data === null) {
+    return false
+  }
+  return (event.data as Partial<FrameToggleSidebarMessage>).type === FRAME_TOGGLE_SIDEBAR_MESSAGE
+}
+
 const FRAME_STYLE = `
 body[data-dsh-docking-frame] #root {
   margin-right: 0 !important;
@@ -107,6 +162,8 @@ body[data-dsh-docking-frame] [data-side='details'] {
   display: none !important;
 }
 body[data-dsh-docking-frame] [data-dsh-docking-frame-conversation] {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
   margin-bottom: 0 !important;
 }
 `
@@ -115,7 +172,9 @@ body[data-dsh-docking-frame] [data-dsh-docking-frame-conversation] {
  * Remove duplicate shell chrome inside an embedded stock DSH client.
  * @returns cleanup for attributes, observer, and injected style.
  */
-export function installFramePresentation(): () => void {
+export function installFramePresentation(
+  postMessage: PostFrameMessage = postToParent,
+): () => void {
   document.body.setAttribute('data-dsh-docking-frame', '')
   const style = document.createElement('style')
   style.dataset.dshDockingFrameStyle = ''
@@ -146,9 +205,21 @@ export function installFramePresentation(): () => void {
     if (markShell()) observer.disconnect()
   })
   if (!markShell()) observer.observe(document.documentElement, { childList: true, subtree: true })
+  const handleMobileToggle = (event: MouseEvent): void => {
+    const target = event.target
+    if (!(target instanceof Element) || target.closest("button[data-mobile-nav='toggle']") === null) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+    postMessage({ type: FRAME_TOGGLE_SIDEBAR_MESSAGE })
+  }
+  document.addEventListener('click', handleMobileToggle, true)
 
   return () => {
     observer.disconnect()
+    document.removeEventListener('click', handleMobileToggle, true)
     document.body.removeAttribute('data-dsh-docking-frame')
     style.remove()
     for (const element of marked) {

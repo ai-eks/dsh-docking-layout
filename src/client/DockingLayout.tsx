@@ -11,11 +11,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import {
   IconChevronDownOutline14, IconChevronRightOutline14, IconCloseFill14,
-  IconCloseOutline16, IconPanelLeftOutline16, StateDot,
+  StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { createDockingLayoutStore } from './stores.ts'
 import {
-  MAX_GROUPS, activateTab, closeGroup, closeTab, collectGroups, collectSessionIds,
+  MAX_GROUPS, activateTab, closeTab, collectGroups, collectSessionIds,
   moveTab, openTab, reconcileSessionLayout, resolveDropZone, sameLayout, splitTab,
   type DropZone, type SessionLayoutNode, type SessionLayoutResult, type SessionTabGroup,
 } from './layout.ts'
@@ -27,6 +27,7 @@ export type DockingLayoutProps =
   PropsRuntime<'shell.overlay'>
   & PropsStore<ReturnType<typeof createDockingLayoutStore>>
   & PropsLocale<'docking-layout'>
+  & { startSession: () => void }
 
 /** Props for the root-scoped sidebar footer affordance. */
 export type DockingLayoutFooterActionProps =
@@ -44,6 +45,32 @@ interface DropTarget {
   readonly zone: DropZone
 }
 
+interface PendingFinalClose {
+  readonly groupId: string
+  readonly sessionId: SessionId
+}
+
+function replaceSession(
+  node: SessionLayoutNode | undefined,
+  previous: SessionId,
+  next: SessionId,
+): SessionLayoutNode | undefined {
+  if (node === undefined) return undefined
+  if (node.kind === 'split') {
+    return {
+      ...node,
+      first: replaceSession(node.first, previous, next)!,
+      second: replaceSession(node.second, previous, next)!,
+    }
+  }
+  if (!node.tabs.includes(previous)) return node
+  return {
+    ...node,
+    tabs: node.tabs.map(id => id === previous ? next : id),
+    active: node.active === previous ? next : node.active,
+  }
+}
+
 const UNSEEN_NAVIGATION = Symbol('unseen navigation')
 
 interface SurfaceBounds {
@@ -56,6 +83,33 @@ interface SurfaceBounds {
 function equalBounds(left: SurfaceBounds | undefined, right: SurfaceBounds): boolean {
   return left?.left === right.left && left.top === right.top
     && left.width === right.width && left.height === right.height
+}
+
+/** Matching destination icons for entering and leaving the docking layout. */
+function LayoutIcon({ docked, size = 14 }: { docked: boolean; size?: number }): ReactNode {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      data-docking-layout-docked-icon={docked || undefined}
+      data-docking-layout-single-icon={!docked || undefined}
+    >
+      <rect
+        x="1.25"
+        y="1.25"
+        width="13.5"
+        height="13.5"
+        rx="2.25"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path d="M1.75 5.25H14.25" stroke="currentColor" strokeWidth="1.3" />
+      {docked ? <path d="M8 5.75V14.25" stroke="currentColor" strokeWidth="1.3" /> : null}
+    </svg>
+  )
 }
 
 /** Track the stock conversation column after native and external panel concessions. */
@@ -94,26 +148,26 @@ function useConversationSurface(): CSSProperties {
 }
 
 /**
- * Keep the disabled-layout entry point in the persistent DSH sidebar footer.
+ * Keep the layout toggle in the persistent DSH sidebar footer.
  * @param props - sidebar width state and the shared root layout store.
- * @returns the open action, or null while Docking Layout is active.
+ * @returns the action for entering or leaving Docking Layout.
  */
 export function DockingLayoutFooterAction({
   wide, useStore, actions, t,
 }: DockingLayoutFooterActionProps): ReactNode {
   const enabled = useStore(state => state.enabled)
-  if (enabled) return null
+  const label = t(enabled ? 'action.single' : 'action.open')
   return (
     <button
       className={css.footerAction}
       data-wide={wide || undefined}
       type="button"
-      aria-label={t('action.open')}
-      title={t('action.open')}
-      onClick={() => { actions.setEnabled(true) }}
+      aria-label={label}
+      title={label}
+      onClick={() => { actions.setEnabled(!enabled) }}
     >
-      <IconPanelLeftOutline16 size={wide ? 16 : 18} />
-      {wide ? <span>{t('action.open')}</span> : null}
+      <LayoutIcon docked={!enabled} size={wide ? 16 : 18} />
+      {wide ? <span>{label}</span> : null}
     </button>
   )
 }
@@ -124,11 +178,12 @@ export function DockingLayoutFooterAction({
  * @returns the current single-pane or tabbed workbench layout.
  */
 export function DockingLayout({
-  useSessions, useStore, actions, useWorkspaces, t,
+  useSessions, useStore, actions, useWorkspaces, startSession, t,
 }: DockingLayoutProps): ReactNode {
   const sessions = useSessions(state => state)
   const current = sessions.current
-  const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
+  const workspaceState = useWorkspaces(state => state)
+  const archivedSessionIds = workspaceState.archivedSessionIds
   const grid = useStore(state => state)
   const surfaceStyle = useConversationSurface()
   const previousNavigation = useRef<SessionId | undefined | typeof UNSEEN_NAVIGATION>(
@@ -136,21 +191,54 @@ export function DockingLayout({
   )
   const [dragged, setDragged] = useState<DraggedTab>()
   const [dropTarget, setDropTarget] = useState<DropTarget>()
+  const [pendingFinalClose, setPendingFinalClose] = useState<PendingFinalClose>()
   const archived = useMemo(() => new Set(archivedSessionIds), [archivedSessionIds])
   const eligible = useMemo(
-    () => sessions.ids.filter(id => sessions.byId[id]?.blank === false && !archived.has(id)),
-    [archived, sessions],
+    () => sessions.ids.filter((id) => {
+      const session = sessions.byId[id]
+      return session !== undefined
+        && (session.blank === false || id === current)
+        && session.origin !== 'subagent'
+        && !archived.has(id)
+    }),
+    [archived, current, sessions],
   )
   const reconciled = useMemo(
-    () => reconcileSessionLayout(
-      grid.layout, eligible, current, grid.activeGroupId, grid.nextGroup,
-      previousNavigation.current !== current,
-    ),
-    [current, eligible, grid.activeGroupId, grid.layout, grid.nextGroup],
+    () => {
+      const previous = previousNavigation.current
+      const replacingFinal = pendingFinalClose !== undefined
+        && current !== undefined
+        && current !== pendingFinalClose.sessionId
+      const replacingBlankWorkspace = pendingFinalClose === undefined
+        && current !== undefined
+        && previous !== UNSEEN_NAVIGATION
+        && previous !== undefined
+        && previous !== current
+        && sessions.byId[previous]?.blank === true
+        && sessions.byId[current]?.blank === true
+      const sourceLayout = replacingFinal
+        ? {
+            kind: 'group' as const,
+            id: pendingFinalClose.groupId,
+            tabs: [current] as const,
+            active: current,
+          }
+        : replacingBlankWorkspace
+          ? replaceSession(grid.layout, previous, current)
+          : grid.layout
+      return reconcileSessionLayout(
+        sourceLayout, eligible, current, grid.activeGroupId, grid.nextGroup,
+        previousNavigation.current !== current,
+      )
+    },
+    [
+      current, eligible, grid.activeGroupId, grid.layout, grid.nextGroup, pendingFinalClose,
+      sessions,
+    ],
   )
   const sessionIds = useMemo(() => collectSessionIds(reconciled.layout), [reconciled.layout])
   const groups = useMemo(() => collectGroups(reconciled.layout), [reconciled.layout])
-  const currentIsBlank = current === undefined || sessions.byId[current]?.blank !== false
+  const currentIsAvailable = current !== undefined && sessions.byId[current] !== undefined
   const persistedMatches = sameLayout(grid.layout, reconciled.layout)
     && grid.activeGroupId === reconciled.activeGroupId
     && grid.nextGroup === reconciled.nextGroup
@@ -160,23 +248,37 @@ export function DockingLayout({
   }, [current])
 
   useEffect(() => {
-    if (!persistedMatches) {
+    if (grid.enabled && !persistedMatches) {
       actions.setLayout(reconciled.layout, reconciled.activeGroupId, reconciled.nextGroup)
     }
-  }, [actions, persistedMatches, reconciled])
+  }, [actions, grid.enabled, persistedMatches, reconciled])
+
+  useEffect(() => {
+    if (
+      pendingFinalClose !== undefined
+      && current !== undefined
+      && current !== pendingFinalClose.sessionId
+      && persistedMatches
+    ) {
+      setPendingFinalClose(undefined)
+    }
+  }, [current, pendingFinalClose, persistedMatches])
+
+  const layoutVisible = grid.enabled && currentIsAvailable
+  useEffect(() => {
+    document.body.toggleAttribute('data-dsh-docking-layout-active', layoutVisible)
+    return () => { document.body.removeAttribute('data-dsh-docking-layout-active') }
+  }, [layoutVisible])
 
   const commit = (result: SessionLayoutResult): void => {
     actions.setLayout(result.layout, result.activeGroupId, result.nextGroup)
   }
 
-  if (!grid.enabled || currentIsBlank) return null
+  if (!layoutVisible) return null
 
   if (reconciled.layout === undefined) {
     return (
       <section className={css.root} style={surfaceStyle} data-docking-layout="">
-        <div className={css.emptyActions}>
-          <button type="button" onClick={() => { actions.setEnabled(false) }}>{t('action.single')}</button>
-        </div>
         <div className={css.empty}>
           <strong>{t('empty.title')}</strong>
           <span>{t('empty.hint')}</span>
@@ -189,6 +291,17 @@ export function DockingLayout({
   const groupCount = groups.length
   const openIds = new Set(sessionIds)
   const unopened = eligible.filter(id => !openIds.has(id))
+  const remaining = new Set(unopened)
+  const grouped = workspaceState.items.flatMap((workspace) => {
+    const ids = workspace.sessionIds.filter(id => remaining.delete(id))
+    return ids.length === 0
+      ? []
+      : [{ key: workspace.workspaceId as string, label: workspace.title, ids }]
+  })
+  const ungrouped = unopened.filter(id => remaining.has(id))
+  const openGroups = ungrouped.length === 0
+    ? grouped
+    : [...grouped, { key: 'ungrouped', label: t('open.ungrouped'), ids: ungrouped }]
   const dragStart = (
     event: DragEvent<HTMLButtonElement>,
     groupId: string,
@@ -221,9 +334,22 @@ export function DockingLayout({
     setDropTarget(undefined)
   }
 
-  const renderGroup = (group: SessionTabGroup, index: number): ReactNode => {
+  const renderGroup = (
+    group: SessionTabGroup,
+    index: number,
+    topRight: boolean,
+  ): ReactNode => {
     const active = group.active
-    const splitDisabled = group.tabs.length <= 1 || groupCount >= MAX_GROUPS
+    const splitFallback = group.tabs.length <= 1 ? unopened[0] : undefined
+    const splitDisabled = (group.tabs.length <= 1 && splitFallback === undefined)
+      || groupCount >= MAX_GROUPS
+    const split = (zone: 'right' | 'bottom'): void => {
+      const source = splitFallback === undefined
+        ? { layout, nextGroup: reconciled.nextGroup }
+        : openTab(layout, group.id, splitFallback, reconciled.nextGroup)
+      if (source.layout === undefined) return
+      commit(splitTab(source.layout, group.id, active, zone, source.nextGroup))
+    }
     const focusGroup = (event: PointerEvent<HTMLElement>): void => {
       const target = event.target as HTMLElement
       if (target.closest('[data-session-tab]') !== null) return
@@ -237,7 +363,7 @@ export function DockingLayout({
         id={`session-group-${group.id}`}
         className={css.group}
         data-active={group.id === reconciled.activeGroupId || undefined}
-        data-mobile-active={group.id === reconciled.activeGroupId || undefined}
+        data-docking-layout-top-right={topRight || undefined}
         aria-label={t('group.label', { index: index + 1 })}
         onPointerDownCapture={focusGroup}
         onDragOver={(event) => { dragOver(event, group.id) }}
@@ -277,8 +403,12 @@ export function DockingLayout({
                     type="button"
                     aria-label={`${t('action.closeTab')}: ${title}`}
                     title={t('action.closeTab')}
-                    disabled={sessionIds.length <= 1}
                     onClick={() => {
+                      if (sessionIds.length <= 1) {
+                        setPendingFinalClose({ groupId: group.id, sessionId })
+                        startSession()
+                        return
+                      }
                       const result = closeTab(
                         layout, group.id, sessionId, reconciled.nextGroup,
                       )
@@ -307,10 +437,14 @@ export function DockingLayout({
               }}
             >
               <option value="">{t('action.openShort')}</option>
-              {unopened.map(sessionId => (
-                <option key={sessionId} value={sessionId}>
-                  {sessions.byId[sessionId]?.displayTitle ?? sessionId}
-                </option>
+              {openGroups.map(group => (
+                <optgroup key={group.key} label={group.label}>
+                  {group.ids.map(sessionId => (
+                    <option key={sessionId} value={sessionId}>
+                      {sessions.byId[sessionId]?.displayTitle ?? sessionId}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             <button
@@ -318,11 +452,7 @@ export function DockingLayout({
               aria-label={t('action.splitRight')}
               title={t('action.splitRight')}
               disabled={splitDisabled}
-              onClick={() => {
-                commit(splitTab(
-                  layout, group.id, active, 'right', reconciled.nextGroup,
-                ))
-              }}
+              onClick={() => { split('right') }}
             >
               <IconChevronRightOutline14 />
             </button>
@@ -331,33 +461,9 @@ export function DockingLayout({
               aria-label={t('action.splitDown')}
               title={t('action.splitDown')}
               disabled={splitDisabled}
-              onClick={() => {
-                commit(splitTab(
-                  layout, group.id, active, 'bottom', reconciled.nextGroup,
-                ))
-              }}
+              onClick={() => { split('bottom') }}
             >
               <IconChevronDownOutline14 />
-            </button>
-            <button
-              type="button"
-              aria-label={t('action.closeGroup')}
-              title={t('action.closeGroup')}
-              disabled={groupCount <= 1}
-              onClick={() => {
-                const result = closeGroup(layout, group.id, reconciled.nextGroup)
-                commit(result)
-              }}
-            >
-              <IconCloseOutline16 size={14} />
-            </button>
-            <button
-              type="button"
-              aria-label={t('action.single')}
-              title={t('action.single')}
-              onClick={() => { actions.setEnabled(false) }}
-            >
-              <IconPanelLeftOutline16 size={14} />
             </button>
           </div>
         </div>
@@ -389,13 +495,17 @@ export function DockingLayout({
   }
 
   let groupIndex = 0
-  const renderLayout = (node: SessionLayoutNode): ReactNode => {
-    if (node.kind === 'group') return renderGroup(node, groupIndex++)
+  const renderLayout = (
+    node: SessionLayoutNode,
+    top = true,
+    right = true,
+  ): ReactNode => {
+    if (node.kind === 'group') return renderGroup(node, groupIndex++, top && right)
     return (
       <div className={css.split} data-axis={node.axis}>
-        {renderLayout(node.first)}
+        {renderLayout(node.first, top, node.axis === 'vertical' && right)}
         <div className={css.divider} aria-hidden="true" />
-        {renderLayout(node.second)}
+        {renderLayout(node.second, node.axis === 'horizontal' && top, right)}
       </div>
     )
   }
@@ -406,34 +516,8 @@ export function DockingLayout({
       style={surfaceStyle}
       data-docking-layout=""
       data-group-count={groupCount}
+      data-dragging={dragged !== undefined || undefined}
     >
-      <div
-        className={css.mobileGroups}
-        role="tablist"
-        aria-label={t('mobile.groups')}
-        data-docking-layout-mobile-groups=""
-      >
-        {groups.map((group, index) => {
-          const title = sessions.byId[group.active]?.displayTitle ?? group.active
-          return (
-            <button
-              key={group.id}
-              type="button"
-              role="tab"
-              aria-selected={group.id === reconciled.activeGroupId}
-              aria-controls={`session-group-${group.id}`}
-              onClick={() => {
-                commit(activateTab(
-                  layout, group.id, group.active, reconciled.nextGroup,
-                ))
-              }}
-            >
-              <span>{index + 1}</span>
-              {title}
-            </button>
-          )
-        })}
-      </div>
       <div className={css.layout}>{renderLayout(layout)}</div>
     </section>
   )

@@ -5,7 +5,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { DockingLayout, DockingLayoutFooterAction } from './DockingLayout.tsx'
 import {
-  followFrameSession, frameSessionId, installFramePresentation, isFrameReadyMessage,
+  followFrameSession, frameSessionId, installFramePresentation, isFrameNavigateMessage,
+  isFrameReadyMessage, isFrameToggleSidebarMessage,
 } from './frame.ts'
 import { createDockingLayoutStore } from './stores.ts'
 import { en, zh, type DockingLayoutKey } from './locales.ts'
@@ -23,8 +24,9 @@ export type {
 } from './layout.ts'
 export type { DockingLayoutState } from './stores.ts'
 export {
-  FRAME_READY_MESSAGE, FRAME_SESSION_PARAM, followFrameSession, frameSessionId,
-  installFramePresentation, isFrameReadyMessage, sessionFrameUrl,
+  FRAME_NAVIGATE_MESSAGE, FRAME_READY_MESSAGE, FRAME_SESSION_PARAM, followFrameSession,
+  FRAME_TOGGLE_SIDEBAR_MESSAGE, frameSessionId, installFramePresentation,
+  isFrameNavigateMessage, isFrameReadyMessage, isFrameToggleSidebarMessage, sessionFrameUrl,
 } from './frame.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -37,7 +39,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'docking-layout'
 
 /** Services required by the browser-only layout overlay. */
-export const inject = ['slots', 'sessions', 'locale']
+export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'layout']
 
 /**
  * Register Docking Layout over the stock conversation column.
@@ -57,20 +59,32 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'docking-layout: dictionaries')
   const store = createDockingLayoutStore()
   ctx.effect(() => {
-    const restoreNavigation = (event: MessageEvent<unknown>): void => {
+    const handleFrameMessage = (event: MessageEvent<unknown>): void => {
+      if (isFrameNavigateMessage(event)) {
+        const sessions = ctx.sessions.list.getSnapshot()
+        if (sessions.byId[event.data.sessionId] !== undefined) {
+          ctx.sessions.open(event.data.sessionId)
+        }
+        return
+      }
+      if (isFrameToggleSidebarMessage(event)) {
+        ctx.layout.toggleSidebar()
+        return
+      }
       if (!isFrameReadyMessage(event)) return
       const current = ctx.sessions.list.getSnapshot().current
       if (current !== undefined) ctx.sessions.open(current)
     }
-    window.addEventListener('message', restoreNavigation)
-    return () => { window.removeEventListener('message', restoreNavigation) }
-  }, 'docking-layout: preserve outer navigation')
+    window.addEventListener('message', handleFrameMessage)
+    return () => { window.removeEventListener('message', handleFrameMessage) }
+  }, 'docking-layout: bridge embedded navigation')
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
     id: 'docking-layout',
     order: 10,
     locale: NS,
     store,
+    inject: () => ({ startSession: () => { ctx.workspaces.startSession() } }),
   }, DockingLayout))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
