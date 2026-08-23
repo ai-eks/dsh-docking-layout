@@ -20,7 +20,7 @@ import {
   followFrameSession, frameSessionId, installFramePresentation,
 } from '../src/client/frame.ts'
 import {
-  canSplitBounds, closeTab, collectGroups, collectSessionIds, moveTab, reconcileSessionLayout,
+  closeTab, collectGroups, collectSessionIds, moveTab, reconcileSessionLayout,
   resolveDropZone, splitTab, type SessionLayoutNode,
 } from '../src/client/layout.ts'
 import { zh } from '../src/client/locales.ts'
@@ -136,17 +136,6 @@ describe('editor-group operations', () => {
     expect(resolveDropZone(300, 60, rect)).toBe('top')
     expect(resolveDropZone(300, 340, rect)).toBe('bottom')
     expect(resolveDropZone(300, 200, rect)).toBe('center')
-  })
-
-  it('requires enough room in the requested split direction', () => {
-    expect(canSplitBounds({ width: 640, height: 561 }, 'right')).toBe(false)
-    expect(canSplitBounds({ width: 641, height: 560 }, 'right')).toBe(true)
-    expect(canSplitBounds({ width: 641, height: 560 }, 'bottom')).toBe(false)
-    expect(canSplitBounds({ width: 640, height: 561 }, 'bottom')).toBe(true)
-    expect(canSplitBounds({ width: 641, height: 279 }, 'right')).toBe(false)
-    expect(canSplitBounds({ width: 319, height: 561 }, 'bottom')).toBe(false)
-    expect(canSplitBounds({ width: 0, height: 0 }, 'center')).toBe(true)
-    expect(canSplitBounds({ width: 0, height: 0 }, 'right', true)).toBe(true)
   })
 
   it('allows an edge move to create a fifth group', () => {
@@ -292,9 +281,6 @@ describe('DockingLayout', () => {
     expect(gammaUrl.searchParams.get('dsh-docking-session')).toBe(S3)
     expect(gammaUrl.hash).toBe('#details')
 
-    const article = view.getByRole('article')
-    mockBounds(article, 641, 561)
-    act(() => { window.dispatchEvent(new Event('resize')) })
     fireEvent.click(view.getByRole('button', { name: '将当前标签拆分到右侧' }))
     expect(view.getAllByRole('article')).toHaveLength(2)
     expect(view.container.querySelectorAll('iframe')).toHaveLength(3)
@@ -320,7 +306,7 @@ describe('DockingLayout', () => {
     expect(view.queryByRole('button', { name: '返回单栏模式' })).toBeNull()
   })
 
-  it('updates directional split availability after a resize', async () => {
+  it('keeps directional split actions available for small panes', () => {
     const instance = createDockingLayoutStore().create()
     instance.actions.setLayout({
       kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
@@ -337,35 +323,19 @@ describe('DockingLayout', () => {
     const article = view.getByRole('article')
     const splitRight = view.getByRole<HTMLButtonElement>('button', { name: '将当前标签拆分到右侧' })
     const splitDown = view.getByRole<HTMLButtonElement>('button', { name: '将当前标签拆分到下方' })
-    mockBounds(article, 640, 561)
-    act(() => { window.dispatchEvent(new Event('resize')) })
-    await waitFor(() => {
-      expect(splitRight.disabled).toBe(true)
-      expect(splitDown.disabled).toBe(false)
-    })
+    mockBounds(article, 120, 100)
+    expect(splitRight.disabled).toBe(false)
+    expect(splitDown.disabled).toBe(false)
 
-    mockBounds(article, 641, 560)
-    act(() => { window.dispatchEvent(new Event('resize')) })
-    await waitFor(() => {
-      expect(splitRight.disabled).toBe(false)
-      expect(splitDown.disabled).toBe(true)
-    })
-
-    mockBounds(article, 640, 560)
-    fireEvent.click(splitRight)
-    expect(view.getAllByRole('article')).toHaveLength(1)
-
-    mockBounds(article, 641, 561)
     const alpha = view.getByRole('tab', { name: /^Alpha$/ })
     const dataTransfer = { effectAllowed: 'none', dropEffect: 'move', setData: vi.fn() }
     fireEvent.dragStart(alpha, { dataTransfer })
     const dragOver = new Event('dragover', { bubbles: true, cancelable: true })
-    Object.assign(dragOver, { clientX: 635, clientY: 280, dataTransfer })
+    Object.assign(dragOver, { clientX: 118, clientY: 50, dataTransfer })
     fireEvent(article, dragOver)
     expect(view.container.querySelector('[data-zone="right"]')).not.toBeNull()
-    mockBounds(article, 640, 561)
     fireEvent.drop(article, { dataTransfer })
-    expect(view.getAllByRole('article')).toHaveLength(1)
+    expect(view.getAllByRole('article')).toHaveLength(2)
   })
 
   it('allows a singleton group to move across an edge without adding a group', () => {

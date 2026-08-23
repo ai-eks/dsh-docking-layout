@@ -2,21 +2,20 @@
 
 [English](README.md) | 中文
 
-这是一个 DeepSeek Harness Web UI 插件，用编辑器式分组组织不限数量的对话 Tab。空间足够时可以继续拆分；窗格过小时会禁用拆分。
+这是一个 DeepSeek Harness Web UI 插件，用编辑器式分组组织不限数量的对话 Tab。可以自由拆分；窗格过小时由用户关闭或移动 Tab。
 
 ## 截图
 
 ![不限数量的对话 Tab](docs/images/unlimited-tabs.png)
 
-| 双窗格 | 空间感知三窗格 |
+| 双窗格 | 三窗格 |
 | --- | --- |
-| ![双对话分组](docs/images/two-groups.png) | ![空间感知三分组布局](docs/images/space-aware-grid.png) |
+| ![双对话分组](docs/images/two-groups.png) | ![三对话分组](docs/images/three-groups.png) |
 
 ## 功能
 
-- Tab 和分组数量不限，Tab 可以在分组之间移动。
+- Tab 和分组数量不限，不设置固定的窗格尺寸门槛。
 - 把 Tab 拖到另一分组可直接移动，拖到边缘可拆分；工具栏支持向右或向下拆分。
-- 桌面端只有拆分后两个窗格都能保持至少 320×280 像素时，才允许继续拆分。
 - 宽度不超过 760 像素时，一次显示一个全宽分组，并通过分组切换栏导航。
 - 关闭 Tab 只改变浏览器布局，不会删除对应的 DSH Session。
 

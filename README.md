@@ -2,21 +2,20 @@
 
 English | [中文](README.zh.md)
 
-A DeepSeek Harness Web UI plugin for organizing unlimited conversation tabs into editor-style groups. Split while space allows; when a pane would become too small, further splitting is disabled.
+A DeepSeek Harness Web UI plugin for organizing unlimited conversation tabs into editor-style groups. Split freely, then close or move tabs whenever a pane becomes too small.
 
 ## Preview
 
 ![Unlimited conversation tabs](docs/images/unlimited-tabs.png)
 
-| Two groups | Space-aware three groups |
+| Two groups | Three groups |
 | --- | --- |
-| ![Two conversation groups](docs/images/two-groups.png) | ![Space-aware three-group layout](docs/images/space-aware-grid.png) |
+| ![Two conversation groups](docs/images/two-groups.png) | ![Three conversation groups](docs/images/three-groups.png) |
 
 ## Features
 
-- Unlimited tabs and groups, with tabs movable between groups.
+- Unlimited tabs and groups, with no fixed pane-size guard.
 - Drag a tab to another group to move it, or to an edge to split; toolbar buttons split right or down.
-- Desktop splits are allowed only when both resulting panes can remain at least 320×280 pixels.
 - At widths up to 760 pixels, one full-width group is shown at a time with a group switcher.
 - Closing a tab changes only the browser layout and never deletes its DSH Session.
 

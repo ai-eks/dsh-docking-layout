@@ -15,7 +15,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { createDockingLayoutStore } from './stores.ts'
 import {
-  activateTab, canSplitBounds, closeTab, collectGroups, collectSessionIds, moveTab, openTab,
+  activateTab, closeTab, collectGroups, collectSessionIds, moveTab, openTab,
   reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab, type DropZone,
   type SessionLayoutNode, type SessionLayoutResult, type SessionTabGroup,
 } from './layout.ts'
@@ -67,17 +67,6 @@ interface SurfaceBounds {
   readonly height: number
 }
 
-interface GroupBounds {
-  readonly width: number
-  readonly height: number
-}
-
-interface LayoutMeasurements {
-  readonly compact: boolean
-  readonly groups: ReadonlyMap<string, GroupBounds>
-}
-
-const COMPACT_BREAKPOINT = 760
 const RECENT_FRAME_LIMIT = 2
 
 function equalBounds(left: SurfaceBounds | undefined, right: SurfaceBounds): boolean {
@@ -87,15 +76,6 @@ function equalBounds(left: SurfaceBounds | undefined, right: SurfaceBounds): boo
 
 function equalSessionIds(left: readonly SessionId[], right: readonly SessionId[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index])
-}
-
-function equalMeasurements(left: LayoutMeasurements, right: LayoutMeasurements): boolean {
-  if (left.compact !== right.compact || left.groups.size !== right.groups.size) return false
-  for (const [id, bounds] of right.groups) {
-    const current = left.groups.get(id)
-    if (current?.width !== bounds.width || current.height !== bounds.height) return false
-  }
-  return true
 }
 
 function updateFrameHistory(
@@ -254,12 +234,7 @@ export function DockingLayout({
   const [pendingFinalClose, setPendingFinalClose] = useState<PendingFinalClose>()
   const [pendingFrameReplacement, setPendingFrameReplacement] = useState<PendingFrameReplacement>()
   const [frameHistory, setFrameHistory] = useState<readonly SessionId[]>([])
-  const [measurements, setMeasurements] = useState<LayoutMeasurements>({
-    compact: false,
-    groups: new Map(),
-  })
   const rootRef = useRef<HTMLElement | null>(null)
-  const groupRefs = useRef(new Map<string, HTMLElement>())
   const groupBodyRefs = useRef(new Map<string, HTMLDivElement>())
   const framePanelRefs = useRef(new Map<SessionId, HTMLDivElement>())
   const layoutHasMounted = useRef(false)
@@ -425,15 +400,7 @@ export function DockingLayout({
     if (!layoutVisible || reconciled.layout === undefined || root === null) return
     const sync = (): void => {
       const rootRect = root.getBoundingClientRect()
-      const nextGroups = new Map<string, GroupBounds>()
       for (const group of groups) {
-        const element = groupRefs.current.get(group.id)
-        if (element !== undefined) {
-          const rect = element.getBoundingClientRect()
-          if (rect.width > 0 && rect.height > 0) {
-            nextGroups.set(group.id, { width: rect.width, height: rect.height })
-          }
-        }
         const body = groupBodyRefs.current.get(group.id)
         if (body === undefined) continue
         const rect = body.getBoundingClientRect()
@@ -446,19 +413,10 @@ export function DockingLayout({
           panel.style.height = `${rect.height}px`
         }
       }
-      const nextMeasurements = {
-        compact: window.innerWidth <= COMPACT_BREAKPOINT,
-        groups: nextGroups,
-      }
-      setMeasurements(current => (
-        equalMeasurements(current, nextMeasurements) ? current : nextMeasurements
-      ))
     }
     const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(sync)
     resize?.observe(root)
     for (const group of groups) {
-      const element = groupRefs.current.get(group.id)
-      if (element !== undefined) resize?.observe(element)
       const body = groupBodyRefs.current.get(group.id)
       if (body !== undefined) resize?.observe(body)
     }
@@ -490,17 +448,6 @@ export function DockingLayout({
 
   const layout = reconciled.layout
   const groupCount = groups.length
-  const hasSplitSpace = (groupId: string, zone: Exclude<DropZone, 'center'>): boolean => {
-    if (measurements.compact) return true
-    const bounds = measurements.groups.get(groupId)
-    return bounds !== undefined && canSplitBounds(bounds, zone)
-  }
-  const elementHasSplitSpace = (
-    element: HTMLElement,
-    zone: Exclude<DropZone, 'center'>,
-  ): boolean => canSplitBounds(
-    element.getBoundingClientRect(), zone, window.innerWidth <= COMPACT_BREAKPOINT,
-  )
   const openIds = new Set(sessionIds)
   const unopened = eligible.filter(id => !openIds.has(id))
   const remaining = new Set(unopened)
@@ -529,10 +476,8 @@ export function DockingLayout({
     const source = groups.find(group => group.id === dragged.groupId)
     const canDrop = source !== undefined && (
       zone === 'center'
-      || (
-        (dragged.groupId !== groupId || source.tabs.length > 1)
-        && (source.tabs.length <= 1 || elementHasSplitSpace(event.currentTarget, zone))
-      )
+      || dragged.groupId !== groupId
+      || source.tabs.length > 1
     )
     if (!canDrop) {
       event.dataTransfer.dropEffect = 'none'
@@ -557,7 +502,6 @@ export function DockingLayout({
       && (
         source === undefined
         || (dragged.groupId === targetGroupId && source.tabs.length <= 1)
-        || (source.tabs.length > 1 && !elementHasSplitSpace(event.currentTarget, zone))
       )
     ) {
       setDragged(undefined)
@@ -580,8 +524,6 @@ export function DockingLayout({
     const active = group.active
     const splitFallback = group.tabs.length <= 1 ? unopened[0] : undefined
     const split = (zone: 'right' | 'bottom'): void => {
-      const element = groupRefs.current.get(group.id)
-      if (element === undefined || !elementHasSplitSpace(element, zone)) return
       const source = splitFallback === undefined
         ? { layout, nextGroup: reconciled.nextGroup }
         : openTab(layout, group.id, splitFallback, reconciled.nextGroup)
@@ -600,10 +542,6 @@ export function DockingLayout({
         key={group.id}
         id={`session-group-${group.id}`}
         className={css.group}
-        ref={(element) => {
-          if (element === null) groupRefs.current.delete(group.id)
-          else groupRefs.current.set(group.id, element)
-        }}
         data-active={group.id === reconciled.activeGroupId || undefined}
         data-docking-layout-active-group={group.id === reconciled.activeGroupId || undefined}
         data-docking-layout-top-right={topRight || undefined}
@@ -703,7 +641,6 @@ export function DockingLayout({
               title={t('action.splitRight')}
               disabled={
                 (group.tabs.length <= 1 && splitFallback === undefined)
-                || !hasSplitSpace(group.id, 'right')
                 || pendingFinalClose !== undefined
               }
               onClick={() => { split('right') }}
@@ -716,7 +653,6 @@ export function DockingLayout({
               title={t('action.splitDown')}
               disabled={
                 (group.tabs.length <= 1 && splitFallback === undefined)
-                || !hasSplitSpace(group.id, 'bottom')
                 || pendingFinalClose !== undefined
               }
               onClick={() => { split('bottom') }}

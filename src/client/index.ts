@@ -18,8 +18,7 @@ export type {
   DockingLayoutFooterActionProps, DockingLayoutProps,
 } from './DockingLayout.tsx'
 export {
-  MIN_GROUP_HEIGHT, MIN_GROUP_WIDTH, SPLIT_DIVIDER_SIZE,
-  activateTab, canSplitBounds, closeTab, collectGroups, collectSessionIds, moveTab, openTab,
+  activateTab, closeTab, collectGroups, collectSessionIds, moveTab, openTab,
   reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab,
 } from './layout.ts'
 export type {
