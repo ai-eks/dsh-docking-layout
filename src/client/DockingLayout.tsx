@@ -47,8 +47,8 @@ interface DropTarget {
 
 interface PendingFinalClose {
   readonly groupId: string
-  readonly sessionId: SessionId
   readonly outerCurrent: SessionId | undefined
+  readonly knownSessionIds: readonly SessionId[]
 }
 
 function replaceSession(
@@ -208,6 +208,11 @@ export function DockingLayout({
     }),
     [archived, current, sessions],
   )
+  const pendingReplacement = pendingFinalClose !== undefined
+    && current !== undefined
+    && current !== pendingFinalClose.outerCurrent
+    && !pendingFinalClose.knownSessionIds.includes(current)
+    && sessions.byId[current]?.blank === true
   const reconciled = useMemo(
     () => {
       if (!sessionsReady) {
@@ -218,9 +223,6 @@ export function DockingLayout({
         }
       }
       const previous = previousNavigation.current
-      const replacingFinal = pendingFinalClose !== undefined
-        && current !== undefined
-        && current !== pendingFinalClose.outerCurrent
       const replacingBlankWorkspace = pendingFinalClose === undefined
         && current !== undefined
         && previous !== UNSEEN_NAVIGATION
@@ -228,7 +230,7 @@ export function DockingLayout({
         && previous !== current
         && sessions.byId[previous]?.blank === true
         && sessions.byId[current]?.blank === true
-      const sourceLayout = replacingFinal
+      const sourceLayout = pendingReplacement
         ? {
             kind: 'group' as const,
             id: pendingFinalClose.groupId,
@@ -245,7 +247,7 @@ export function DockingLayout({
     },
     [
       current, eligible, grid.activeGroupId, grid.layout, grid.nextGroup, pendingFinalClose,
-      sessions, sessionsReady,
+      pendingReplacement, sessions, sessionsReady,
     ],
   )
   const sessionIds = useMemo(() => collectSessionIds(reconciled.layout), [reconciled.layout])
@@ -280,11 +282,11 @@ export function DockingLayout({
       pendingFinalClose !== undefined
       && current !== undefined
       && current !== pendingFinalClose.outerCurrent
-      && persistedMatches
+      && (!pendingReplacement || persistedMatches)
     ) {
       setPendingFinalClose(undefined)
     }
-  }, [current, pendingFinalClose, persistedMatches])
+  }, [current, pendingFinalClose, pendingReplacement, persistedMatches])
 
   useEffect(() => {
     const focusGroup = (event: MessageEvent<unknown>): void => {
@@ -402,8 +404,9 @@ export function DockingLayout({
     if (dragged === undefined) return
     const zone = resolveDropZone(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
     const source = groups.find(group => group.id === dragged.groupId)
-    const canSplit = groupCount < MAX_GROUPS
-      || (dragged.groupId !== groupId && source?.tabs.length === 1)
+    const canSplit = dragged.groupId === groupId
+      ? groupCount < MAX_GROUPS && source !== undefined && source.tabs.length > 1
+      : groupCount < MAX_GROUPS || source?.tabs.length === 1
     if (zone !== 'center' && !canSplit) {
       event.dataTransfer.dropEffect = 'none'
       setDropTarget(undefined)
@@ -502,7 +505,9 @@ export function DockingLayout({
                     onClick={() => {
                       if (sessionIds.length <= 1) {
                         setPendingFinalClose({
-                          groupId: group.id, sessionId, outerCurrent: current,
+                          groupId: group.id,
+                          outerCurrent: current,
+                          knownSessionIds: [...sessions.ids],
                         })
                         startSession()
                         return

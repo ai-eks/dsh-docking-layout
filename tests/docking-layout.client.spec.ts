@@ -265,6 +265,23 @@ describe('DockingLayout', () => {
     }))
 
     await waitFor(() => { expect(view.getAllByRole('article')).toHaveLength(1) })
+    const article = view.getByRole('article')
+    article.getBoundingClientRect = () => ({
+      x: 0, y: 0, left: 0, top: 0, right: 400, bottom: 300,
+      width: 400, height: 300, toJSON: () => ({}),
+    })
+    const dataTransfer = { effectAllowed: 'none', dropEffect: 'move', setData: vi.fn() }
+    const alpha = view.getByRole('tab', { name: /^Alpha$/ })
+    fireEvent.dragStart(alpha, { dataTransfer })
+    expect(view.getAllByRole('tab')).toHaveLength(1)
+    expect(view.container.querySelector('[data-dragging]')).not.toBeNull()
+    const dragOver = new Event('dragover', { bubbles: true, cancelable: true })
+    Object.assign(dragOver, { clientX: 5, clientY: 150, dataTransfer })
+    fireEvent(article, dragOver)
+    expect(dataTransfer.dropEffect).toBe('none')
+    expect(view.container.querySelector('[data-zone]')).toBeNull()
+    fireEvent.dragEnd(alpha)
+
     const split = view.getByRole<HTMLButtonElement>('button', { name: '将当前标签拆分到右侧' })
     expect(split.disabled).toBe(false)
     fireEvent.click(split)
@@ -380,6 +397,63 @@ describe('DockingLayout', () => {
     })
     expect(view.queryByRole('tab', { name: /^Alpha$/ })).toBeNull()
     expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
+  })
+
+  it('does not treat unrelated navigation as the pending final-tab replacement', async () => {
+    const instance = createDockingLayoutStore().create()
+    let sessionState: SessionListState = { ...sessions, current: S1 }
+    const listeners = new Set<() => void>()
+    const sessionSource: HostObservable<SessionListState> = {
+      getSnapshot: () => sessionState,
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+    }
+    const startSession = vi.fn()
+    instance.actions.setLayout({
+      kind: 'group', id: 'group-1', tabs: [S1], active: S1,
+    }, 'group-1', 2)
+    const view = render(createElement(DockingLayout, {
+      useSessions: bindSnapshotSelector(sessionSource),
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
+        selector(workspaces)
+      )) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession,
+      t: makeTranslate(zh),
+    }))
+
+    fireEvent.click(view.getByRole('button', { name: '关闭标签: Alpha' }))
+    act(() => {
+      sessionState = { ...sessionState, current: S2 }
+      for (const listener of listeners) listener()
+    })
+    await waitFor(() => {
+      expect(view.getByRole('tab', { name: /^Beta$/ })).toBeTruthy()
+    })
+    expect(view.getByRole('tab', { name: /^Alpha$/ })).toBeTruthy()
+
+    act(() => {
+      sessionState = {
+        ...sessionState,
+        ids: [...sessionState.ids, S4],
+        current: S4,
+        byId: {
+          ...sessionState.byId,
+          [S4]: {
+            id: S4, displayTitle: 'New Session', running: false, blank: true, updatedAt: 4,
+          },
+        },
+      }
+      for (const listener of listeners) listener()
+    })
+    await waitFor(() => {
+      expect(view.getByRole('tab', { name: /^New Session$/ })).toBeTruthy()
+    })
+    expect(view.getByRole('tab', { name: /^Alpha$/ })).toBeTruthy()
+    expect(view.getByRole('tab', { name: /^Beta$/ })).toBeTruthy()
   })
 
   it('reopens or focuses the unchanged outer Session when its sidebar row is reselected', () => {
