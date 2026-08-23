@@ -615,12 +615,21 @@ describe('DockingLayout', () => {
         return () => { listeners.delete(listener) }
       },
     }
+    let workspaceState: WorkspaceListState = workspaces
+    const workspaceListeners = new Set<() => void>()
+    const workspaceSource: HostObservable<WorkspaceListState> = {
+      getSnapshot: () => workspaceState,
+      subscribe: (listener) => {
+        workspaceListeners.add(listener)
+        return () => { workspaceListeners.delete(listener) }
+      },
+    }
     instance.actions.setLayout({
       kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       useSessions: bindSnapshotSelector(sessionSource),
-      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
+      useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
       startSession: vi.fn(),
@@ -632,6 +641,8 @@ describe('DockingLayout', () => {
     expect(view.getByRole('tab', { name: /^Beta$/ })).toBeTruthy()
 
     act(() => {
+      workspaceState = { ...workspaceState, phase: 'pending' }
+      for (const listener of workspaceListeners) listener()
       window.dispatchEvent(new MessageEvent('message', {
         origin: window.location.origin,
         data: {
@@ -653,6 +664,13 @@ describe('DockingLayout', () => {
         },
       }
       for (const listener of listeners) listener()
+    })
+
+    expect(collectSessionIds(instance.getSnapshot().layout)).toEqual([S2])
+
+    act(() => {
+      workspaceState = { ...workspaceState, phase: 'ready' }
+      for (const listener of workspaceListeners) listener()
     })
 
     await waitFor(() => {
@@ -1035,6 +1053,7 @@ describe('plugin wiring', () => {
     outerSessions = {
       ...outerSessions,
       ids: [...outerSessions.ids, S4],
+      phase: 'pending',
       byId: {
         ...outerSessions.byId,
         [S4]: {
@@ -1044,6 +1063,14 @@ describe('plugin wiring', () => {
     }
     for (const listener of outerListeners) listener()
     expect(open).toHaveBeenCalledWith(S4)
+
+    outerSessions = { ...outerSessions, phase: 'ready' }
+    for (const listener of outerListeners) listener()
+    expect(open).toHaveBeenCalledTimes(2)
+
+    outerSessions = { ...outerSessions, current: S4 }
+    for (const listener of outerListeners) listener()
+    expect(open).toHaveBeenCalledTimes(2)
 
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,

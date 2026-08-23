@@ -302,8 +302,10 @@ export function DockingLayout({
   }, [current, dataReady, pendingFinalClose, pendingReplacement, persistedMatches])
 
   useEffect(() => {
-    if (frameReplacementReady && persistedMatches) setPendingFrameReplacement(undefined)
-  }, [frameReplacementReady, persistedMatches])
+    if (dataReady && frameReplacementReady && persistedMatches) {
+      setPendingFrameReplacement(undefined)
+    }
+  }, [dataReady, frameReplacementReady, persistedMatches])
 
   useEffect(() => {
     const handleFrameMessage = (event: MessageEvent<unknown>): void => {

@@ -1,5 +1,7 @@
 /** Browser plugin that overlays stock DSH with dockable, same-origin Session frames. */
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  ClientContext, SessionId, SessionListState,
+} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -62,17 +64,28 @@ export function apply(ctx: ClientContext): void {
   const store = createDockingLayoutStore()
   ctx.effect(() => {
     let pendingNavigation: SessionId | undefined
+    let requestedPhase: SessionListState['phase'] | undefined
+    let requestedCurrent: SessionId | undefined
     const openPendingNavigation = (): void => {
       if (pendingNavigation === undefined) return
       const sessions = ctx.sessions.list.getSnapshot()
+      if (sessions.current === pendingNavigation) {
+        pendingNavigation = undefined
+        requestedPhase = undefined
+        requestedCurrent = undefined
+        return
+      }
       if (sessions.byId[pendingNavigation] === undefined) return
-      const sessionId = pendingNavigation
-      pendingNavigation = undefined
-      ctx.sessions.open(sessionId)
+      if (requestedPhase === sessions.phase && requestedCurrent === sessions.current) return
+      requestedPhase = sessions.phase
+      requestedCurrent = sessions.current
+      ctx.sessions.open(pendingNavigation)
     }
     const handleFrameMessage = (event: MessageEvent<unknown>): void => {
       if (isFrameNavigateMessage(event)) {
         pendingNavigation = event.data.sessionId
+        requestedPhase = undefined
+        requestedCurrent = undefined
         openPendingNavigation()
         return
       }
