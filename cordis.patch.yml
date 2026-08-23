@@ -1,0 +1,3 @@
+- insert:
+    - id: docking-layout
+      name: '@ai-eks/dsh-docking-layout'

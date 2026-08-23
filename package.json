@@ -1,0 +1,103 @@
+{
+  "name": "@ai-eks/dsh-docking-layout",
+  "description": "Dockable Session tabs and drag-to-split conversation groups for DeepSeek Harness",
+  "version": "0.1.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ai-eks/dsh-docking-layout.git"
+  },
+  "homepage": "https://github.com/ai-eks/dsh-docking-layout#readme",
+  "bugs": "https://github.com/ai-eks/dsh-docking-layout/issues",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "README.md",
+    "README.zh.md",
+    "cordis.patch.yml",
+    "lib/index.d.ts",
+    "lib/index.js",
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/client",
+    "lib/invariant.d.ts",
+    "lib/invariant.js",
+    "src"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": "^22.19 || >=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
+    "bundle": "tsdown",
+    "prepare": "pnpm run build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.8 || ^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.8 || ^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.1.0-rc.8 || ^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.8 || ^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": "^0.1.0-rc.8 || ^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.8 || ^0.1.1-rc.2",
+    "@deepseek-ai/dsh-invariants": "^0.1.0-rc.8 || ^0.1.1-rc.2",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-locale": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-invariants": "0.1.1-rc.2",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^24",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
+    "jsdom": "^26.0.0",
+    "lightningcss": "^1.29.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^5.9",
+    "vitest": "^4"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "packageManager": "pnpm@11.7.0"
+}
