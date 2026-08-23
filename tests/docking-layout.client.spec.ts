@@ -551,15 +551,19 @@ describe('DockingLayout', () => {
     expect(view.getByRole('tab', { name: /^Beta$/ }).getAttribute('aria-selected')).toBe('true')
   })
 
-  it('keeps a newly selected blank Session inside Docking Layout', () => {
+  it('keeps an open blank Session after outer navigation changes', () => {
     const instance = createDockingLayoutStore().create()
     const blankSessions: SessionListState = {
       ...sessions,
+      current: S1,
       byId: {
         ...sessions.byId,
         [S2]: { ...sessions.byId[S2]!, blank: true },
       },
     }
+    instance.actions.setLayout({
+      kind: 'group', id: 'group-1', tabs: [S2], active: S2,
+    }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(blankSessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
@@ -570,6 +574,7 @@ describe('DockingLayout', () => {
     }))
 
     expect(view.getByRole('article')).toBeTruthy()
+    expect(view.getByRole('tab', { name: /^Alpha$/ })).toBeTruthy()
     expect(view.getByRole('tab', { name: /^Beta$/ })).toBeTruthy()
     expect(view.getByTitle('Beta').getAttribute('src')).toContain(
       'dsh-docking-session=session-2',
@@ -580,7 +585,7 @@ describe('DockingLayout', () => {
     const instance = createDockingLayoutStore().create()
     let sessionState: SessionListState = {
       ...sessions,
-      current: S2,
+      current: S1,
       byId: {
         ...sessions.byId,
         [S2]: { ...sessions.byId[S2]!, blank: true },
@@ -595,7 +600,7 @@ describe('DockingLayout', () => {
       },
     }
     instance.actions.setLayout({
-      kind: 'group', id: 'group-1', tabs: [S2], active: S2,
+      kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       useSessions: bindSnapshotSelector(sessionSource),
@@ -606,7 +611,20 @@ describe('DockingLayout', () => {
       t: makeTranslate(zh),
     }))
 
+    fireEvent.click(view.getByRole('button', { name: '关闭标签: Alpha' }))
+    expect(view.getAllByRole('tab')).toHaveLength(1)
+    expect(view.getByRole('tab', { name: /^Beta$/ })).toBeTruthy()
+
     act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: window.location.origin,
+        data: {
+          type: FRAME_NAVIGATE_MESSAGE,
+          sourceSessionId: S2,
+          sessionId: S4,
+          replaceSource: true,
+        },
+      }))
       sessionState = {
         ...sessionState,
         ids: [...sessionState.ids, S4],
@@ -737,6 +755,45 @@ describe('DockingLayout', () => {
     })
     await waitFor(() => { expect(view.getAllByRole('article')).toHaveLength(2) })
     expect(instance.getSnapshot().layout).toEqual(savedLayout)
+  })
+
+  it('waits for Workspace metadata before filtering persisted tabs', async () => {
+    const instance = createDockingLayoutStore().create()
+    const savedLayout: SessionLayoutNode = {
+      kind: 'group', id: 'group-1', tabs: [S1], active: S1,
+    }
+    instance.actions.setLayout(savedLayout, 'group-1', 2)
+    let workspaceState: WorkspaceListState = { ...workspaces, phase: 'pending' }
+    const listeners = new Set<() => void>()
+    const workspaceSource: HostObservable<WorkspaceListState> = {
+      getSnapshot: () => workspaceState,
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+    }
+    const view = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => (
+        selector({ ...sessions, current: S1 })
+      )) as never,
+      useWorkspaces: bindSnapshotSelector(workspaceSource),
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    expect(view.container.firstChild).toBeNull()
+    expect(instance.getSnapshot().layout).toEqual(savedLayout)
+
+    act(() => {
+      workspaceState = { ...workspaces, archivedSessionIds: [S1] }
+      for (const listener of listeners) listener()
+    })
+    await waitFor(() => {
+      expect(document.body.hasAttribute('data-dsh-docking-layout-active')).toBe(false)
+    })
+    expect(view.container.querySelector('iframe')).toBeNull()
   })
 
   it('excludes archived Sessions from tabs and the open list', async () => {
@@ -931,7 +988,12 @@ describe('plugin wiring', () => {
     open.mockClear()
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
-      data: { type: FRAME_NAVIGATE_MESSAGE, sessionId: S1 },
+      data: {
+        type: FRAME_NAVIGATE_MESSAGE,
+        sourceSessionId: S2,
+        sessionId: S1,
+        replaceSource: false,
+      },
     }))
     expect(open).toHaveBeenCalledWith(S1)
 
@@ -999,7 +1061,9 @@ describe('plugin wiring', () => {
     for (const listener of listeners) listener()
     expect(postFrameMessage).toHaveBeenCalledWith({
       type: FRAME_NAVIGATE_MESSAGE,
+      sourceSessionId: S1,
       sessionId: S2,
+      replaceSource: false,
     })
     expect(open).toHaveBeenLastCalledWith(S1)
     window.dispatchEvent(new FocusEvent('focus'))
@@ -1135,11 +1199,15 @@ describe('plugin wiring', () => {
 
     expect(postFrameMessage).toHaveBeenCalledWith({
       type: FRAME_NAVIGATE_MESSAGE,
+      sourceSessionId: S1,
       sessionId: S2,
+      replaceSource: false,
     })
     expect(postFrameMessage).toHaveBeenCalledWith({
       type: FRAME_NAVIGATE_MESSAGE,
+      sourceSessionId: S1,
       sessionId: S3,
+      replaceSource: false,
     })
     expect(open).toHaveBeenCalledTimes(1)
     expect(open).toHaveBeenCalledWith(S1)

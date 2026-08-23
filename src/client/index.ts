@@ -17,7 +17,7 @@ export type {
 } from './DockingLayout.tsx'
 export {
   MAX_GROUPS, activateTab, closeTab, collectGroups, collectSessionIds,
-  moveTab, openTab, reconcileSessionLayout, resolveDropZone, sameLayout, splitTab,
+  moveTab, openTab, reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab,
 } from './layout.ts'
 export type {
   DropZone, SessionLayoutNode, SessionLayoutResult, SessionSplit, SessionTabGroup,

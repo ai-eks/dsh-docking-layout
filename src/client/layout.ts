@@ -110,6 +110,28 @@ function updateGroup(
   }
 }
 
+/** Replace one open Session id without changing its tab or group position. */
+export function replaceTab(
+  layout: SessionLayoutNode | undefined,
+  previous: SessionId,
+  next: SessionId,
+): SessionLayoutNode | undefined {
+  if (layout === undefined) return undefined
+  if (layout.kind === 'split') {
+    return {
+      ...layout,
+      first: replaceTab(layout.first, previous, next)!,
+      second: replaceTab(layout.second, previous, next)!,
+    }
+  }
+  if (!layout.tabs.includes(previous)) return layout
+  return {
+    ...layout,
+    tabs: layout.tabs.map(id => id === previous ? next : id),
+    active: layout.active === previous ? next : layout.active,
+  }
+}
+
 function removeGroup(layout: SessionLayoutNode, id: string): SessionLayoutNode | undefined {
   if (layout.kind === 'group') return layout.id === id ? undefined : layout
   const first = removeGroup(layout.first, id)

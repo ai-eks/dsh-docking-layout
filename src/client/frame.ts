@@ -27,7 +27,9 @@ export interface FrameReadyMessage {
 /** Request for the outer client to route one embedded directory selection. */
 export interface FrameNavigateMessage {
   readonly type: typeof FRAME_NAVIGATE_MESSAGE
+  readonly sourceSessionId: SessionId
   readonly sessionId: SessionId
+  readonly replaceSource: boolean
 }
 
 /** Signal used to keep the outer active group aligned with iframe focus. */
@@ -109,7 +111,13 @@ export function followFrameSession(
         && state.byId[state.current] !== undefined
       ) {
         lastNavigation = state.current
-        postMessage({ type: FRAME_NAVIGATE_MESSAGE, sessionId: state.current })
+        postMessage({
+          type: FRAME_NAVIGATE_MESSAGE,
+          sourceSessionId: sessionId,
+          sessionId: state.current,
+          replaceSource: state.byId[sessionId]?.blank === true
+            && state.byId[state.current]?.blank === true,
+        })
       }
       if (!requested || requestedPhase !== state.phase) {
         requested = true
@@ -165,8 +173,11 @@ export function isFrameNavigateMessage(
   }
   const candidate = event.data as Partial<FrameNavigateMessage>
   return candidate.type === FRAME_NAVIGATE_MESSAGE
+    && typeof candidate.sourceSessionId === 'string'
+    && candidate.sourceSessionId !== ''
     && typeof candidate.sessionId === 'string'
     && candidate.sessionId !== ''
+    && typeof candidate.replaceSource === 'boolean'
 }
 
 /** Check a same-origin postMessage payload for an embedded Session focus signal. */

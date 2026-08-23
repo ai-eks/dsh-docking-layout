@@ -16,10 +16,10 @@ import {
 import type { createDockingLayoutStore } from './stores.ts'
 import {
   MAX_GROUPS, activateTab, closeTab, collectGroups, collectSessionIds,
-  moveTab, openTab, reconcileSessionLayout, resolveDropZone, sameLayout, splitTab,
+  moveTab, openTab, reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab,
   type DropZone, type SessionLayoutNode, type SessionLayoutResult, type SessionTabGroup,
 } from './layout.ts'
-import { isFrameFocusMessage, sessionFrameUrl } from './frame.ts'
+import { isFrameFocusMessage, isFrameNavigateMessage, sessionFrameUrl } from './frame.ts'
 import css from './DockingLayout.module.css'
 
 /** Complete props of the root-scoped Docking Layout overlay. */
@@ -51,25 +51,9 @@ interface PendingFinalClose {
   readonly knownSessionIds: readonly SessionId[]
 }
 
-function replaceSession(
-  node: SessionLayoutNode | undefined,
-  previous: SessionId,
-  next: SessionId,
-): SessionLayoutNode | undefined {
-  if (node === undefined) return undefined
-  if (node.kind === 'split') {
-    return {
-      ...node,
-      first: replaceSession(node.first, previous, next)!,
-      second: replaceSession(node.second, previous, next)!,
-    }
-  }
-  if (!node.tabs.includes(previous)) return node
-  return {
-    ...node,
-    tabs: node.tabs.map(id => id === previous ? next : id),
-    active: node.active === previous ? next : node.active,
-  }
+interface PendingFrameReplacement {
+  readonly sourceSessionId: SessionId
+  readonly sessionId: SessionId
 }
 
 const UNSEEN_NAVIGATION = Symbol('unseen navigation')
@@ -206,6 +190,7 @@ export function DockingLayout({
   const [dragged, setDragged] = useState<DraggedTab>()
   const [dropTarget, setDropTarget] = useState<DropTarget>()
   const [pendingFinalClose, setPendingFinalClose] = useState<PendingFinalClose>()
+  const [pendingFrameReplacement, setPendingFrameReplacement] = useState<PendingFrameReplacement>()
   const rootRef = useRef<HTMLElement | null>(null)
   const groupBodyRefs = useRef(new Map<string, HTMLDivElement>())
   const framePanelRefs = useRef(new Map<SessionId, HTMLDivElement>())
@@ -213,39 +198,37 @@ export function DockingLayout({
   const frameUrls = useRef(new Map<SessionId, string>())
   const layoutHasMounted = useRef(false)
   const sessionsReady = sessions.phase === 'ready'
+  const workspacesReady = workspaceState.phase === 'ready'
+  const dataReady = sessionsReady && workspacesReady
   const archived = useMemo(() => new Set(archivedSessionIds), [archivedSessionIds])
+  const docked = useMemo(() => new Set(collectSessionIds(grid.layout)), [grid.layout])
   const eligible = useMemo(
     () => sessions.ids.filter((id) => {
       const session = sessions.byId[id]
       return session !== undefined
-        && (session.blank === false || id === current)
+        && (session.blank === false || id === current || docked.has(id))
         && session.origin !== 'subagent'
         && !archived.has(id)
     }),
-    [archived, current, sessions],
+    [archived, current, docked, sessions],
   )
   const pendingReplacement = pendingFinalClose !== undefined
     && current !== undefined
     && current !== pendingFinalClose.outerCurrent
     && !pendingFinalClose.knownSessionIds.includes(current)
     && sessions.byId[current]?.blank === true
+  const frameReplacementReady = pendingFrameReplacement !== undefined
+    && current === pendingFrameReplacement.sessionId
+    && sessions.byId[current]?.blank === true
   const reconciled = useMemo(
     () => {
-      if (!sessionsReady) {
+      if (!dataReady) {
         return {
           layout: grid.layout,
           activeGroupId: grid.activeGroupId,
           nextGroup: grid.nextGroup,
         }
       }
-      const previous = previousNavigation.current
-      const replacingBlankWorkspace = pendingFinalClose === undefined
-        && current !== undefined
-        && previous !== UNSEEN_NAVIGATION
-        && previous !== undefined
-        && previous !== current
-        && sessions.byId[previous]?.blank === true
-        && sessions.byId[current]?.blank === true
       const sourceLayout = pendingReplacement
         ? {
             kind: 'group' as const,
@@ -253,8 +236,12 @@ export function DockingLayout({
             tabs: [current] as const,
             active: current,
           }
-        : replacingBlankWorkspace
-          ? replaceSession(grid.layout, previous, current)
+        : frameReplacementReady
+          ? replaceTab(
+              grid.layout,
+              pendingFrameReplacement.sourceSessionId,
+              pendingFrameReplacement.sessionId,
+            )
           : grid.layout
       return reconcileSessionLayout(
         sourceLayout, eligible, current, grid.activeGroupId, grid.nextGroup,
@@ -263,7 +250,7 @@ export function DockingLayout({
     },
     [
       current, eligible, grid.activeGroupId, grid.layout, grid.nextGroup, pendingFinalClose,
-      pendingReplacement, sessions, sessionsReady,
+      dataReady, frameReplacementReady, pendingFrameReplacement, pendingReplacement,
     ],
   )
   const sessionIds = useMemo(() => collectSessionIds(reconciled.layout), [reconciled.layout])
@@ -294,8 +281,8 @@ export function DockingLayout({
     && grid.nextGroup === reconciled.nextGroup
 
   useEffect(() => {
-    if (sessionsReady) previousNavigation.current = current
-  }, [current, sessionsReady])
+    if (dataReady) previousNavigation.current = current
+  }, [current, dataReady])
 
   useEffect(() => {
     if (!persistedMatches) {
@@ -315,18 +302,29 @@ export function DockingLayout({
   }, [current, pendingFinalClose, pendingReplacement, persistedMatches])
 
   useEffect(() => {
-    const focusGroup = (event: MessageEvent<unknown>): void => {
+    if (frameReplacementReady && persistedMatches) setPendingFrameReplacement(undefined)
+  }, [frameReplacementReady, persistedMatches])
+
+  useEffect(() => {
+    const handleFrameMessage = (event: MessageEvent<unknown>): void => {
+      if (isFrameNavigateMessage(event) && event.data.replaceSource) {
+        setPendingFrameReplacement({
+          sourceSessionId: event.data.sourceSessionId,
+          sessionId: event.data.sessionId,
+        })
+        return
+      }
       if (!isFrameFocusMessage(event) || reconciled.layout === undefined) return
       const owner = groups.find(group => group.tabs.includes(event.data.sessionId))
       if (owner !== undefined && owner.id !== reconciled.activeGroupId) {
         actions.setLayout(reconciled.layout, owner.id, reconciled.nextGroup)
       }
     }
-    window.addEventListener('message', focusGroup)
-    return () => { window.removeEventListener('message', focusGroup) }
+    window.addEventListener('message', handleFrameMessage)
+    return () => { window.removeEventListener('message', handleFrameMessage) }
   }, [actions, groups, reconciled])
 
-  const layoutVisible = grid.enabled && sessionsReady && currentIsEligible
+  const layoutVisible = grid.enabled && dataReady && currentIsEligible
   if (layoutVisible) layoutHasMounted.current = true
   useEffect(() => {
     document.body.toggleAttribute('data-dsh-docking-layout-active', layoutVisible)
