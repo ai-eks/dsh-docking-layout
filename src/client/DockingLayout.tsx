@@ -295,11 +295,11 @@ export function DockingLayout({
       pendingFinalClose !== undefined
       && current !== undefined
       && current !== pendingFinalClose.outerCurrent
-      && (!pendingReplacement || persistedMatches)
+      && (!pendingReplacement || (dataReady && persistedMatches))
     ) {
       setPendingFinalClose(undefined)
     }
-  }, [current, pendingFinalClose, pendingReplacement, persistedMatches])
+  }, [current, dataReady, pendingFinalClose, pendingReplacement, persistedMatches])
 
   useEffect(() => {
     if (frameReplacementReady && persistedMatches) setPendingFrameReplacement(undefined)

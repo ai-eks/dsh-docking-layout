@@ -402,15 +402,22 @@ describe('DockingLayout', () => {
         return () => { listeners.delete(listener) }
       },
     }
+    let workspaceState = workspaces
+    const workspaceListeners = new Set<() => void>()
+    const workspaceSource: HostObservable<WorkspaceListState> = {
+      getSnapshot: () => workspaceState,
+      subscribe: (listener) => {
+        workspaceListeners.add(listener)
+        return () => { workspaceListeners.delete(listener) }
+      },
+    }
     const startSession = vi.fn()
     instance.actions.setLayout({
       kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       useSessions: bindSnapshotSelector(sessionSource),
-      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
-        selector(workspaces)
-      )) as never,
+      useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
       startSession,
@@ -439,6 +446,8 @@ describe('DockingLayout', () => {
     expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
 
     act(() => {
+      workspaceState = { ...workspaceState, phase: 'pending' }
+      for (const listener of workspaceListeners) listener()
       sessionState = {
         ...sessionState,
         ids: [...sessionState.ids, S4],
@@ -451,6 +460,13 @@ describe('DockingLayout', () => {
         },
       }
       for (const listener of listeners) listener()
+    })
+
+    expect(collectSessionIds(instance.getSnapshot().layout)).toEqual([S1])
+
+    act(() => {
+      workspaceState = workspaces
+      for (const listener of workspaceListeners) listener()
     })
 
     await waitFor(() => {
@@ -940,6 +956,8 @@ describe('plugin wiring', () => {
 
   it('registers only stock root slots and restores outer navigation after frame startup', () => {
     const open = vi.fn()
+    let outerSessions = sessions
+    const outerListeners = new Set<() => void>()
     const disposeLocale = vi.fn()
     const disposeLayout = vi.fn()
     const disposers: Array<() => void> = []
@@ -948,7 +966,13 @@ describe('plugin wiring', () => {
       effect: (install: () => () => void) => { disposers.push(install()) },
       locale: { register: vi.fn(() => disposeLocale) },
       sessions: {
-        list: { getSnapshot: () => sessions, subscribe: () => () => {} },
+        list: {
+          getSnapshot: () => outerSessions,
+          subscribe: (listener: () => void) => {
+            outerListeners.add(listener)
+            return () => { outerListeners.delete(listener) }
+          },
+        },
         open,
       },
       workspaces: { startSession: vi.fn() },
@@ -997,6 +1021,30 @@ describe('plugin wiring', () => {
     }))
     expect(open).toHaveBeenCalledWith(S1)
 
+    open.mockClear()
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
+      data: {
+        type: FRAME_NAVIGATE_MESSAGE,
+        sourceSessionId: S2,
+        sessionId: S4,
+        replaceSource: true,
+      },
+    }))
+    expect(open).not.toHaveBeenCalled()
+    outerSessions = {
+      ...outerSessions,
+      ids: [...outerSessions.ids, S4],
+      byId: {
+        ...outerSessions.byId,
+        [S4]: {
+          id: S4, displayTitle: 'New Session', running: false, blank: true, updatedAt: 4,
+        },
+      },
+    }
+    for (const listener of outerListeners) listener()
+    expect(open).toHaveBeenCalledWith(S4)
+
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
       data: { type: FRAME_TOGGLE_SIDEBAR_MESSAGE },
@@ -1004,6 +1052,7 @@ describe('plugin wiring', () => {
     expect(ctx.layout.toggleSidebar).toHaveBeenCalledOnce()
 
     for (const dispose of disposers.reverse()) dispose()
+    expect(outerListeners.size).toBe(0)
     expect(disposeLayout).toHaveBeenCalledOnce()
     expect(disposeLocale).toHaveBeenCalledOnce()
   })

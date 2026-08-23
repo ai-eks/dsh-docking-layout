@@ -1,5 +1,5 @@
 /** Browser plugin that overlays stock DSH with dockable, same-origin Session frames. */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -61,12 +61,19 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'docking-layout: dictionaries')
   const store = createDockingLayoutStore()
   ctx.effect(() => {
+    let pendingNavigation: SessionId | undefined
+    const openPendingNavigation = (): void => {
+      if (pendingNavigation === undefined) return
+      const sessions = ctx.sessions.list.getSnapshot()
+      if (sessions.byId[pendingNavigation] === undefined) return
+      const sessionId = pendingNavigation
+      pendingNavigation = undefined
+      ctx.sessions.open(sessionId)
+    }
     const handleFrameMessage = (event: MessageEvent<unknown>): void => {
       if (isFrameNavigateMessage(event)) {
-        const sessions = ctx.sessions.list.getSnapshot()
-        if (sessions.byId[event.data.sessionId] !== undefined) {
-          ctx.sessions.open(event.data.sessionId)
-        }
+        pendingNavigation = event.data.sessionId
+        openPendingNavigation()
         return
       }
       if (isFrameToggleSidebarMessage(event)) {
@@ -77,8 +84,12 @@ export function apply(ctx: ClientContext): void {
       const current = ctx.sessions.list.getSnapshot().current
       if (current !== undefined) ctx.sessions.open(current)
     }
+    const unsubscribe = ctx.sessions.list.subscribe(openPendingNavigation)
     window.addEventListener('message', handleFrameMessage)
-    return () => { window.removeEventListener('message', handleFrameMessage) }
+    return () => {
+      unsubscribe()
+      window.removeEventListener('message', handleFrameMessage)
+    }
   }, 'docking-layout: bridge embedded navigation')
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
