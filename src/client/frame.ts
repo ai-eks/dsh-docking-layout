@@ -97,14 +97,21 @@ export function followFrameSession(
   let requested = false
   let requestedPhase: SessionListState['phase'] | undefined
   let announced = false
+  let lastNavigation: SessionId | undefined
   const sync = (): void => {
     const state: SessionListState = sessions.list.getSnapshot()
     if (state.byId[sessionId] === undefined) return
     if (state.current !== sessionId) {
+      if (
+        announced
+        && state.current !== undefined
+        && state.current !== lastNavigation
+        && state.byId[state.current] !== undefined
+      ) {
+        lastNavigation = state.current
+        postMessage({ type: FRAME_NAVIGATE_MESSAGE, sessionId: state.current })
+      }
       if (!requested || requestedPhase !== state.phase) {
-        if (announced && state.current !== undefined && state.byId[state.current] !== undefined) {
-          postMessage({ type: FRAME_NAVIGATE_MESSAGE, sessionId: state.current })
-        }
         requested = true
         requestedPhase = state.phase
         sessions.open(sessionId)
@@ -113,6 +120,7 @@ export function followFrameSession(
     }
     requested = false
     requestedPhase = undefined
+    lastNavigation = undefined
     if (!announced) {
       announced = true
       const message: FrameReadyMessage = { type: FRAME_READY_MESSAGE, sessionId }

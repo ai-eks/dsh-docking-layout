@@ -211,6 +211,7 @@ export function DockingLayout({
   const framePanelRefs = useRef(new Map<SessionId, HTMLDivElement>())
   const frameOrder = useRef<SessionId[]>([])
   const frameUrls = useRef(new Map<SessionId, string>())
+  const layoutHasMounted = useRef(false)
   const sessionsReady = sessions.phase === 'ready'
   const archived = useMemo(() => new Set(archivedSessionIds), [archivedSessionIds])
   const eligible = useMemo(
@@ -326,6 +327,7 @@ export function DockingLayout({
   }, [actions, groups, reconciled])
 
   const layoutVisible = grid.enabled && sessionsReady && currentIsEligible
+  if (layoutVisible) layoutHasMounted.current = true
   useEffect(() => {
     document.body.toggleAttribute('data-dsh-docking-layout-active', layoutVisible)
     return () => { document.body.removeAttribute('data-dsh-docking-layout-active') }
@@ -388,9 +390,10 @@ export function DockingLayout({
     actions.setLayout(result.layout, result.activeGroupId, result.nextGroup)
   }
 
-  if (!layoutVisible) return null
+  if (!layoutVisible && !layoutHasMounted.current) return null
 
   if (reconciled.layout === undefined) {
+    if (!layoutVisible) return null
     return (
       <section className={css.root} style={surfaceStyle} data-docking-layout="">
         <div className={css.empty}>
@@ -634,6 +637,7 @@ export function DockingLayout({
       ref={rootRef}
       className={css.root}
       style={surfaceStyle}
+      hidden={!layoutVisible}
       data-docking-layout=""
       data-group-count={groupCount}
       data-dragging={dragged !== undefined || undefined}

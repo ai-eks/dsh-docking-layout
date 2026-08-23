@@ -242,6 +242,13 @@ describe('DockingLayout', () => {
     expect(view.queryByTitle('Gamma')).toBeNull()
 
     const alphaFrame = view.getByTitle('Alpha')
+    act(() => { instance.actions.setEnabled(false) })
+    expect(view.container.querySelector<HTMLElement>('[data-docking-layout]')?.hidden).toBe(true)
+    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
+    act(() => { instance.actions.setEnabled(true) })
+    expect(view.container.querySelector<HTMLElement>('[data-docking-layout]')?.hidden).toBe(false)
+    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
+
     const alphaFrameUrl = alphaFrame.getAttribute('src')
     const alpha = view.getByRole('tab', { name: /^Alpha$/ })
     const dataTransfer = { effectAllowed: 'none', setData: vi.fn() }
@@ -1092,6 +1099,41 @@ describe('plugin wiring', () => {
       type: FRAME_READY_MESSAGE,
       sessionId: S1,
     })
+    stop()
+  })
+
+  it('forwards each frame navigation while one addressed reopen remains pending', () => {
+    let state: SessionListState = { ...sessions, current: S1 }
+    const listeners = new Set<() => void>()
+    const open = vi.fn()
+    const service = {
+      list: {
+        getSnapshot: () => state,
+        subscribe: (listener: () => void) => {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+      },
+      open,
+    }
+    const postFrameMessage = vi.fn()
+    const stop = followFrameSession(service as never, S1, postFrameMessage)
+
+    state = { ...state, current: S2 }
+    for (const listener of listeners) listener()
+    state = { ...state, current: S3 }
+    for (const listener of listeners) listener()
+
+    expect(postFrameMessage).toHaveBeenCalledWith({
+      type: FRAME_NAVIGATE_MESSAGE,
+      sessionId: S2,
+    })
+    expect(postFrameMessage).toHaveBeenCalledWith({
+      type: FRAME_NAVIGATE_MESSAGE,
+      sessionId: S3,
+    })
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith(S1)
     stop()
   })
 
