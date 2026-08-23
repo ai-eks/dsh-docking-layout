@@ -160,6 +160,38 @@ describe('editor-group operations', () => {
 })
 
 describe('DockingLayout', () => {
+  it('tracks a replacement conversation surface without a window resize', async () => {
+    const instance = createDockingLayoutStore().create()
+    const view = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+    const root = view.container.querySelector<HTMLElement>('[data-docking-layout]')!
+    await waitFor(() => { expect(root.style.left).toBe('48px') })
+
+    const previousSurface = document.querySelector('[data-slot="conversation"]')!.parentElement!
+    const replacement = document.createElement('main')
+    const anchor = document.createElement('div')
+    anchor.dataset.slot = 'conversation'
+    replacement.append(anchor)
+    replacement.getBoundingClientRect = () => ({
+      x: 100, y: 20, left: 100, top: 20, right: 600, bottom: 620,
+      width: 500, height: 600, toJSON: () => ({}),
+    })
+    previousSurface.replaceWith(replacement)
+
+    await waitFor(() => {
+      expect(root.style.left).toBe('100px')
+      expect(root.style.top).toBe('20px')
+      expect(root.style.width).toBe('500px')
+      expect(root.style.height).toBe('600px')
+    })
+  })
+
   it('keeps same-origin Session frames mounted and splits by button', async () => {
     const instance = createDockingLayoutStore().create()
     const view = render(createElement(DockingLayout, {

@@ -126,7 +126,6 @@ function useConversationSurface(): CSSProperties {
         observed = nextObserved
         resize?.observe(nextObserved)
       }
-      discovery?.disconnect()
       const rect = nextObserved.getBoundingClientRect()
       const next = { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
       setBounds(current => equalBounds(current, next) ? current : next)

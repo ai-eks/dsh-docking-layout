@@ -235,7 +235,7 @@ body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
   background: var(--dsw-alias-bg-base);
 }
 
-.root[data-dragging] .sessionFrame {
+.root[data-dragging] .tabPanel {
   pointer-events: none;
 }
 
