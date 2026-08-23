@@ -181,6 +181,10 @@ describe('editor-group operations', () => {
 describe('DockingLayout', () => {
   it('tracks a replacement conversation surface without a window resize', async () => {
     const instance = createDockingLayoutStore().create()
+    const initialSurface = document.querySelector('[data-slot="conversation"]')!.parentElement!
+    const initialRect = initialSurface.getBoundingClientRect.bind(initialSurface)
+    const measureInitial = vi.fn(initialRect)
+    initialSurface.getBoundingClientRect = measureInitial
     const view = render(createElement(DockingLayout, {
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
@@ -192,7 +196,13 @@ describe('DockingLayout', () => {
     const root = view.container.querySelector<HTMLElement>('[data-docking-layout]')!
     await waitFor(() => { expect(root.style.left).toBe('48px') })
 
-    const previousSurface = document.querySelector('[data-slot="conversation"]')!.parentElement!
+    const measurementCount = measureInitial.mock.calls.length
+    await act(async () => {
+      document.querySelector('[data-slot="conversation"]')!.append(document.createElement('p'))
+      await new Promise(resolve => { setTimeout(resolve, 0) })
+    })
+    expect(measureInitial).toHaveBeenCalledTimes(measurementCount)
+
     const replacement = document.createElement('main')
     const anchor = document.createElement('div')
     anchor.dataset.slot = 'conversation'
@@ -201,7 +211,7 @@ describe('DockingLayout', () => {
       x: 100, y: 20, left: 100, top: 20, right: 600, bottom: 620,
       width: 500, height: 600, toJSON: () => ({}),
     })
-    previousSurface.replaceWith(replacement)
+    initialSurface.replaceWith(replacement)
 
     await waitFor(() => {
       expect(root.style.left).toBe('100px')
@@ -232,6 +242,7 @@ describe('DockingLayout', () => {
     expect(view.queryByTitle('Gamma')).toBeNull()
 
     const alphaFrame = view.getByTitle('Alpha')
+    const alphaFrameUrl = alphaFrame.getAttribute('src')
     const alpha = view.getByRole('tab', { name: /^Alpha$/ })
     const dataTransfer = { effectAllowed: 'none', setData: vi.fn() }
     fireEvent.dragStart(alpha, { dataTransfer })
@@ -239,8 +250,11 @@ describe('DockingLayout', () => {
     fireEvent.dragEnd(alpha)
     expect(view.container.querySelector('[data-dragging]')).toBeNull()
 
+    window.history.pushState({}, '', '/another-host-route?view=changed#details')
     fireEvent.click(alpha)
     expect(alpha.getAttribute('aria-selected')).toBe('true')
+    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
+    expect(alphaFrame.getAttribute('src')).toBe(alphaFrameUrl)
 
     fireEvent.click(view.getByRole('button', { name: '将当前标签拆分到右侧' }))
     expect(view.getAllByRole('article')).toHaveLength(2)

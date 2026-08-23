@@ -132,7 +132,21 @@ function useConversationSurface(): CSSProperties {
       setBounds(current => equalBounds(current, next) ? current : next)
     }
     const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
-    discovery = new MutationObserver(measure)
+    const containsConversationSlot = (node: Node): boolean => node instanceof Element && (
+      node.matches('[data-slot="conversation"]')
+      || node.querySelector('[data-slot="conversation"]') !== null
+    )
+    discovery = new MutationObserver((records) => {
+      const surfaceChanged = records.some(record => (
+        Array.from(record.addedNodes).some(containsConversationSlot)
+        || Array.from(record.removedNodes).some(node => (
+          containsConversationSlot(node)
+          || node === observed
+          || (node instanceof Element && observed !== undefined && node.contains(observed))
+        ))
+      ))
+      if (surfaceChanged) measure()
+    })
     discovery.observe(document.documentElement, { childList: true, subtree: true })
     window.addEventListener('resize', measure)
     measure()
@@ -196,6 +210,7 @@ export function DockingLayout({
   const groupBodyRefs = useRef(new Map<string, HTMLDivElement>())
   const framePanelRefs = useRef(new Map<SessionId, HTMLDivElement>())
   const frameOrder = useRef<SessionId[]>([])
+  const frameBaseUrl = useRef(window.location.href)
   const sessionsReady = sessions.phase === 'ready'
   const archived = useMemo(() => new Set(archivedSessionIds), [archivedSessionIds])
   const eligible = useMemo(
@@ -650,7 +665,7 @@ export function DockingLayout({
             >
               <iframe
                 className={css.sessionFrame}
-                src={sessionFrameUrl(sessionId)}
+                src={sessionFrameUrl(sessionId, frameBaseUrl.current)}
                 title={sessions.byId[sessionId]?.displayTitle ?? sessionId}
                 allow="clipboard-read; clipboard-write"
                 referrerPolicy="same-origin"
