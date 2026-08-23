@@ -255,10 +255,18 @@ describe('DockingLayout', () => {
     expect(alpha.getAttribute('aria-selected')).toBe('true')
     expect(view.getByTitle('Alpha')).toBe(alphaFrame)
     expect(alphaFrame.getAttribute('src')).toBe(alphaFrameUrl)
+    fireEvent.change(view.getByRole('combobox', { name: '在此分组打开会话' }), {
+      target: { value: S3 },
+    })
+    const gammaUrl = new URL(view.getByTitle('Gamma').getAttribute('src')!)
+    expect(gammaUrl.pathname).toBe('/another-host-route')
+    expect(gammaUrl.searchParams.get('view')).toBe('changed')
+    expect(gammaUrl.searchParams.get('dsh-docking-session')).toBe(S3)
+    expect(gammaUrl.hash).toBe('#details')
 
     fireEvent.click(view.getByRole('button', { name: '将当前标签拆分到右侧' }))
     expect(view.getAllByRole('article')).toHaveLength(2)
-    expect(view.container.querySelectorAll('iframe')).toHaveLength(2)
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(3)
     expect(view.getByTitle('Alpha')).toBe(alphaFrame)
     expect(view.container.querySelectorAll('[data-docking-layout-top-right]')).toHaveLength(1)
     expect(
@@ -1007,6 +1015,13 @@ describe('plugin wiring', () => {
     const messageCount = postFrameMessage.mock.calls.length
     expect(fireEvent.click(mobileToggle)).toBe(false)
     expect(postFrameMessage).toHaveBeenCalledWith({ type: FRAME_TOGGLE_SIDEBAR_MESSAGE })
+
+    const querySelector = vi.spyOn(document, 'querySelector')
+    const queryCount = querySelector.mock.calls.length
+    conversation.append(document.createElement('p'))
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(querySelector).toHaveBeenCalledTimes(queryCount)
+    querySelector.mockRestore()
 
     const nextShell = document.createElement('div')
     const nextSidebarParent = document.createElement('aside')

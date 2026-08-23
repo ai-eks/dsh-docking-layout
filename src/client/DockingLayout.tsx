@@ -210,7 +210,7 @@ export function DockingLayout({
   const groupBodyRefs = useRef(new Map<string, HTMLDivElement>())
   const framePanelRefs = useRef(new Map<SessionId, HTMLDivElement>())
   const frameOrder = useRef<SessionId[]>([])
-  const frameBaseUrl = useRef(window.location.href)
+  const frameUrls = useRef(new Map<SessionId, string>())
   const sessionsReady = sessions.phase === 'ready'
   const archived = useMemo(() => new Set(archivedSessionIds), [archivedSessionIds])
   const eligible = useMemo(
@@ -276,6 +276,16 @@ export function DockingLayout({
     frameOrder.current = ordered
     return ordered
   }, [sessionIds])
+  const frameSources = useMemo(() => {
+    const present = new Set(frameSessionIds)
+    for (const id of frameUrls.current.keys()) {
+      if (!present.has(id)) frameUrls.current.delete(id)
+    }
+    for (const id of frameSessionIds) {
+      if (!frameUrls.current.has(id)) frameUrls.current.set(id, sessionFrameUrl(id))
+    }
+    return frameUrls.current
+  }, [frameSessionIds])
   const groups = useMemo(() => collectGroups(reconciled.layout), [reconciled.layout])
   const currentIsEligible = current !== undefined && eligible.includes(current)
   const persistedMatches = sameLayout(grid.layout, reconciled.layout)
@@ -665,7 +675,7 @@ export function DockingLayout({
             >
               <iframe
                 className={css.sessionFrame}
-                src={sessionFrameUrl(sessionId, frameBaseUrl.current)}
+                src={frameSources.get(sessionId)}
                 title={sessions.byId[sessionId]?.displayTitle ?? sessionId}
                 allow="clipboard-read; clipboard-write"
                 referrerPolicy="same-origin"

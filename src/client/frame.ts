@@ -221,6 +221,7 @@ export function installFramePresentation(
   document.head.append(style)
 
   const marked = new Set<Element>()
+  let activeShell = new Set<Element>()
   const mark = (element: Element | null, attribute: string): boolean => {
     if (element === null) return false
     element.setAttribute(attribute, '')
@@ -232,15 +233,39 @@ export function installFramePresentation(
     const sidebar = document.querySelector('[data-slot="sidebar"]')
     const conversation = document.querySelector('[data-slot="conversation"]')
     const details = document.querySelector('[data-slot="details"]')
-    return [
-      mark(root?.firstElementChild ?? null, 'data-dsh-docking-frame-shell'),
-      mark(sidebar?.parentElement ?? null, 'data-dsh-docking-frame-sidebar'),
-      mark(conversation?.parentElement ?? null, 'data-dsh-docking-frame-conversation'),
-      mark(details?.parentElement ?? null, 'data-dsh-docking-frame-details'),
+    const shellElement = root?.firstElementChild ?? null
+    const sidebarElement = sidebar?.parentElement ?? null
+    const conversationElement = conversation?.parentElement ?? null
+    const detailsElement = details?.parentElement ?? null
+    const elements = [shellElement, sidebarElement, conversationElement, detailsElement]
+    const complete = [
+      mark(shellElement, 'data-dsh-docking-frame-shell'),
+      mark(sidebarElement, 'data-dsh-docking-frame-sidebar'),
+      mark(conversationElement, 'data-dsh-docking-frame-conversation'),
+      mark(detailsElement, 'data-dsh-docking-frame-details'),
     ].every(Boolean)
+    if (complete) activeShell = new Set(elements.filter(element => element !== null))
+    return complete
   }
 
-  const observer = new MutationObserver(markShell)
+  const containsShellSlot = (node: Node): boolean => node instanceof Element && (
+    node.matches('[data-slot="root"], [data-slot="sidebar"], [data-slot="conversation"], [data-slot="details"]')
+    || node.querySelector(
+      '[data-slot="root"], [data-slot="sidebar"], [data-slot="conversation"], [data-slot="details"]',
+    ) !== null
+  )
+  const observer = new MutationObserver((records) => {
+    const shellChanged = records.some(record => (
+      Array.from(record.addedNodes).some(containsShellSlot)
+      || Array.from(record.removedNodes).some(node => (
+        containsShellSlot(node)
+        || activeShell.has(node as Element)
+        || (node instanceof Element
+          && Array.from(activeShell).some(element => node.contains(element)))
+      ))
+    ))
+    if (shellChanged) markShell()
+  })
   markShell()
   observer.observe(document.documentElement, { childList: true, subtree: true })
   const handleMobileToggle = (event: MouseEvent): void => {
