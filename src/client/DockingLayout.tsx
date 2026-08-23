@@ -248,10 +248,10 @@ export function DockingLayout({
   }, [current])
 
   useEffect(() => {
-    if (grid.enabled && !persistedMatches) {
+    if (!persistedMatches) {
       actions.setLayout(reconciled.layout, reconciled.activeGroupId, reconciled.nextGroup)
     }
-  }, [actions, grid.enabled, persistedMatches, reconciled])
+  }, [actions, persistedMatches, reconciled])
 
   useEffect(() => {
     if (

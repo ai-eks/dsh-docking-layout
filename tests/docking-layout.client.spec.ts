@@ -11,6 +11,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import { apply as nodeApply } from '../src/index.ts'
 import * as invariant from '../src/invariant.ts'
+import { styleModule } from '../tsdown.config.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { DockingLayout, DockingLayoutFooterAction } from '../src/client/DockingLayout.tsx'
 import {
@@ -19,7 +20,7 @@ import {
   followFrameSession, frameSessionId, installFramePresentation,
 } from '../src/client/frame.ts'
 import {
-  collectGroups, moveTab, reconcileSessionLayout, resolveDropZone, splitTab,
+  collectGroups, collectSessionIds, moveTab, reconcileSessionLayout, resolveDropZone, splitTab,
   type SessionLayoutNode,
 } from '../src/client/layout.ts'
 import { zh } from '../src/client/locales.ts'
@@ -85,6 +86,7 @@ afterEach(() => {
   cleanup()
   document.body.replaceChildren()
   document.head.querySelectorAll('[data-dsh-docking-frame-style]').forEach(node => { node.remove() })
+  document.head.querySelectorAll('[data-plugin-css]').forEach(node => { node.remove() })
   window.history.replaceState({}, '', '/')
 })
 
@@ -398,6 +400,44 @@ describe('DockingLayout', () => {
     expect(instance.getSnapshot().enabled).toBe(false)
   })
 
+  it('tracks native navigation while Docking Layout is disabled', async () => {
+    const instance = createDockingLayoutStore().create()
+    let sessionState: SessionListState = { ...sessions, current: S1 }
+    const listeners = new Set<() => void>()
+    const sessionSource: HostObservable<SessionListState> = {
+      getSnapshot: () => sessionState,
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+    }
+    instance.actions.setLayout({
+      kind: 'group', id: 'group-1', tabs: [S1], active: S1,
+    }, 'group-1', 2)
+    instance.actions.setEnabled(false)
+    const view = render(createElement(DockingLayout, {
+      useSessions: bindSnapshotSelector(sessionSource),
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
+        selector(workspaces)
+      )) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    act(() => {
+      sessionState = { ...sessionState, current: S3 }
+      for (const listener of listeners) listener()
+    })
+    await waitFor(() => {
+      expect(collectSessionIds(instance.getSnapshot().layout)).toContain(S3)
+    })
+
+    act(() => { instance.actions.setEnabled(true) })
+    expect(view.getByRole('tab', { name: /^Gamma$/ }).getAttribute('aria-selected')).toBe('true')
+  })
+
   it('excludes archived Sessions from tabs and the open list', async () => {
     const instance = createDockingLayoutStore().create()
     const archivedWorkspaces: WorkspaceListState = {
@@ -523,6 +563,23 @@ describe('DockingLayout', () => {
 })
 
 describe('plugin wiring', () => {
+  it('updates the existing generated stylesheet during hot reload', () => {
+    const runStyleModule = (css: string): void => {
+      const source = styleModule('/tmp/DockingLayout.module.css', css, { root: 'root' })
+      Function(source.slice(0, source.lastIndexOf('export default')))()
+    }
+
+    runStyleModule('.root{color:red}')
+    const selector = 'style[data-plugin-css="@ai-eks/dsh-docking-layout/DockingLayout.module.css"]'
+    const initial = document.head.querySelector<HTMLStyleElement>(selector)
+    expect(initial?.textContent).toBe('.root{color:red}')
+
+    runStyleModule('.root{color:blue}')
+    expect(document.head.querySelectorAll(selector)).toHaveLength(1)
+    expect(document.head.querySelector(selector)).toBe(initial)
+    expect(initial?.textContent).toBe('.root{color:blue}')
+  })
+
   it('registers only stock root slots and restores outer navigation after frame startup', () => {
     const open = vi.fn()
     const disposeLocale = vi.fn()
