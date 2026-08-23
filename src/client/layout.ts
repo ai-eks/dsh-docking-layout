@@ -1,9 +1,6 @@
 /** Immutable editor-group operations for the browser-only Session layout. */
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 
-/** Maximum number of simultaneously visible conversation groups. */
-export const MAX_GROUPS = 4
-
 /** Edge or center target used by tab drag-and-drop. */
 export type DropZone = 'center' | 'left' | 'right' | 'top' | 'bottom'
 
@@ -353,7 +350,6 @@ export function splitTab(
     source === undefined
     || source.tabs.length <= 1
     || !source.tabs.includes(sessionId)
-    || collectGroups(layout).length >= MAX_GROUPS
   ) {
     return { layout, activeGroupId: groupIdValue, nextGroup }
   }
@@ -410,9 +406,6 @@ export function moveTab(
     return { layout, activeGroupId: sourceGroupId, nextGroup }
   }
   if (zone === 'center') return openTab(removed, targetGroupId, sessionId, nextGroup)
-  if (collectGroups(removed).length >= MAX_GROUPS) {
-    return { layout, activeGroupId: sourceGroupId, nextGroup }
-  }
 
   const id = groupId(nextGroup)
   const added: SessionTabGroup = { kind: 'group', id, tabs: [sessionId], active: sessionId }

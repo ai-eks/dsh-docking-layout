@@ -2,7 +2,7 @@
 /** Docking Layout grouping, lifecycle, and drag-target semantics. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { createElement, useSyncExternalStore } from 'react'
+import { createElement, StrictMode, useSyncExternalStore } from 'react'
 import type {
   SessionId, SessionListState, WorkspaceId, WorkspaceListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -20,8 +20,8 @@ import {
   followFrameSession, frameSessionId, installFramePresentation,
 } from '../src/client/frame.ts'
 import {
-  closeTab, collectGroups, collectSessionIds, moveTab, reconcileSessionLayout, resolveDropZone,
-  splitTab, type SessionLayoutNode,
+  closeTab, collectGroups, collectSessionIds, moveTab, reconcileSessionLayout,
+  resolveDropZone, splitTab, type SessionLayoutNode,
 } from '../src/client/layout.ts'
 import { zh } from '../src/client/locales.ts'
 import { createDockingLayoutStore } from '../src/client/stores.ts'
@@ -48,6 +48,13 @@ function makeTranslate(dict: Readonly<Record<string, string>>) {
     return template.replace(/\{(\w+)\}/g, (match, name: string) =>
       name in params ? String(params[name]) : match)
   }
+}
+
+function mockBounds(element: Element, width: number, height: number): void {
+  element.getBoundingClientRect = () => ({
+    x: 0, y: 0, left: 0, top: 0, right: width, bottom: height,
+    width, height, toJSON: () => ({}),
+  })
 }
 
 const sessions: SessionListState = {
@@ -131,7 +138,7 @@ describe('editor-group operations', () => {
     expect(resolveDropZone(300, 200, rect)).toBe('center')
   })
 
-  it('rejects an edge move that cannot create a fifth group', () => {
+  it('allows an edge move to create a fifth group', () => {
     const atLimit: SessionLayoutNode = {
       kind: 'split',
       axis: 'horizontal',
@@ -149,12 +156,13 @@ describe('editor-group operations', () => {
       },
     }
 
-    const rejected = moveTab(atLimit, 'group-1', S2, 'group-2', 'right', 5)
+    const moved = moveTab(atLimit, 'group-1', S2, 'group-2', 'right', 5)
 
-    expect(rejected.layout).toBe(atLimit)
-    expect(rejected.activeGroupId).toBe('group-1')
-    expect(collectGroups(rejected.layout).map(group => group.tabs)).toEqual([
-      [S1, S2], [S3], [S4], [S5],
+    expect(moved.layout).not.toBe(atLimit)
+    expect(moved.activeGroupId).toBe('group-5')
+    expect(moved.nextGroup).toBe(6)
+    expect(collectGroups(moved.layout).map(group => group.tabs)).toEqual([
+      [S1], [S3], [S2], [S4], [S5],
     ])
   })
 
@@ -237,19 +245,19 @@ describe('DockingLayout', () => {
     expect(view.getAllByRole('article')).toHaveLength(1)
     expect(view.getAllByRole('tabpanel', { hidden: true })).toHaveLength(2)
     expect(view.getByRole('tab', { name: /^Beta$/ }).getAttribute('aria-selected')).toBe('true')
-    expect(view.getByTitle('Alpha').getAttribute('src')).toContain('dsh-docking-session=session-1')
+    expect(view.queryByTitle('Alpha')).toBeNull()
     expect(view.getByTitle('Beta').getAttribute('src')).toContain('dsh-docking-session=session-2')
     expect(view.queryByTitle('Gamma')).toBeNull()
 
-    const alphaFrame = view.getByTitle('Alpha')
+    const betaFrame = view.getByTitle('Beta')
     act(() => { instance.actions.setEnabled(false) })
     expect(view.container.querySelector<HTMLElement>('[data-docking-layout]')?.hidden).toBe(true)
-    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
+    expect(view.getByTitle('Beta')).toBe(betaFrame)
     act(() => { instance.actions.setEnabled(true) })
     expect(view.container.querySelector<HTMLElement>('[data-docking-layout]')?.hidden).toBe(false)
-    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
+    expect(view.getByTitle('Beta')).toBe(betaFrame)
 
-    const alphaFrameUrl = alphaFrame.getAttribute('src')
+    const betaFrameUrl = betaFrame.getAttribute('src')
     const alpha = view.getByRole('tab', { name: /^Alpha$/ })
     const dataTransfer = { effectAllowed: 'none', setData: vi.fn() }
     fireEvent.dragStart(alpha, { dataTransfer })
@@ -259,9 +267,11 @@ describe('DockingLayout', () => {
 
     window.history.pushState({}, '', '/another-host-route?view=changed#details')
     fireEvent.click(alpha)
+    const alphaFrame = view.getByTitle('Alpha')
     expect(alpha.getAttribute('aria-selected')).toBe('true')
-    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
-    expect(alphaFrame.getAttribute('src')).toBe(alphaFrameUrl)
+    expect(view.getByTitle('Beta')).toBe(betaFrame)
+    expect(betaFrame.getAttribute('src')).toBe(betaFrameUrl)
+    expect(new URL(alphaFrame.getAttribute('src')!).pathname).toBe('/another-host-route')
     fireEvent.change(view.getByRole('combobox', { name: '在此分组打开会话' }), {
       target: { value: S3 },
     })
@@ -284,6 +294,7 @@ describe('DockingLayout', () => {
     act(() => {
       window.dispatchEvent(new MessageEvent('message', {
         origin: window.location.origin,
+        source: (view.getByTitle('Beta') as HTMLIFrameElement).contentWindow,
         data: { type: FRAME_FOCUS_MESSAGE, sessionId: S2 },
       }))
     })
@@ -293,6 +304,168 @@ describe('DockingLayout', () => {
 
     expect(view.queryByRole('button', { name: '关闭分组' })).toBeNull()
     expect(view.queryByRole('button', { name: '返回单栏模式' })).toBeNull()
+  })
+
+  it('keeps directional split actions available for small panes', () => {
+    const instance = createDockingLayoutStore().create()
+    instance.actions.setLayout({
+      kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
+    }, 'group-1', 2)
+    const view = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    const article = view.getByRole('article')
+    const splitRight = view.getByRole<HTMLButtonElement>('button', { name: '将当前标签拆分到右侧' })
+    const splitDown = view.getByRole<HTMLButtonElement>('button', { name: '将当前标签拆分到下方' })
+    mockBounds(article, 120, 100)
+    expect(splitRight.disabled).toBe(false)
+    expect(splitDown.disabled).toBe(false)
+
+    const alpha = view.getByRole('tab', { name: /^Alpha$/ })
+    const dataTransfer = { effectAllowed: 'none', dropEffect: 'move', setData: vi.fn() }
+    fireEvent.dragStart(alpha, { dataTransfer })
+    const dragOver = new Event('dragover', { bubbles: true, cancelable: true })
+    Object.assign(dragOver, { clientX: 118, clientY: 50, dataTransfer })
+    fireEvent(article, dragOver)
+    expect(view.container.querySelector('[data-zone="right"]')).not.toBeNull()
+    fireEvent.drop(article, { dataTransfer })
+    expect(view.getAllByRole('article')).toHaveLength(2)
+  })
+
+  it('allows a singleton group to move across an edge without adding a group', () => {
+    const instance = createDockingLayoutStore().create()
+    instance.actions.setLayout({
+      kind: 'split',
+      axis: 'horizontal',
+      first: { kind: 'group', id: 'group-1', tabs: [S1], active: S1 },
+      second: { kind: 'group', id: 'group-2', tabs: [S2], active: S2 },
+    }, 'group-2', 3)
+    const view = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    const alpha = view.getByRole('tab', { name: /^Alpha$/ })
+    const target = view.getByRole('article', { name: '会话分组 2' })
+    mockBounds(target, 400, 300)
+    const dataTransfer = { effectAllowed: 'none', dropEffect: 'none', setData: vi.fn() }
+    fireEvent.dragStart(alpha, { dataTransfer })
+    const dragOver = new Event('dragover', { bubbles: true, cancelable: true })
+    Object.assign(dragOver, { clientX: 395, clientY: 150, dataTransfer })
+    fireEvent(target, dragOver)
+    expect(dataTransfer.dropEffect).toBe('move')
+    expect(view.container.querySelector('[data-zone="right"]')).not.toBeNull()
+    fireEvent.drop(target, { dataTransfer })
+
+    expect(view.getAllByRole('article')).toHaveLength(2)
+    expect(collectGroups(instance.getSnapshot().layout).map(group => group.tabs)).toEqual([
+      [S2], [S1],
+    ])
+  })
+
+  it('keeps only the active frame and two recently inactive frames', () => {
+    const instance = createDockingLayoutStore().create()
+    const extendedSessions: SessionListState = {
+      ...sessions,
+      ids: [S1, S2, S3, S4, S5],
+      current: S1,
+      byId: {
+        ...sessions.byId,
+        [S4]: { id: S4, displayTitle: 'Delta', running: false, blank: false, updatedAt: 4 },
+        [S5]: { id: S5, displayTitle: 'Epsilon', running: false, blank: false, updatedAt: 5 },
+      },
+    }
+    instance.actions.setLayout({
+      kind: 'group', id: 'group-1', tabs: [S1, S2, S3, S4, S5], active: S1,
+    }, 'group-1', 2)
+    const view = render(createElement(StrictMode, null, createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => (
+        selector(extendedSessions)
+      )) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    })))
+
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(1)
+    const alphaFrame = view.getByTitle('Alpha')
+    fireEvent.click(view.getByRole('tab', { name: /^Beta$/ }))
+    const betaFrame = view.getByTitle('Beta')
+    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
+    fireEvent.click(view.getByRole('tab', { name: /^Gamma$/ }))
+    const gammaFrame = view.getByTitle('Gamma')
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(3)
+
+    fireEvent.click(view.getByRole('tab', { name: /^Delta$/ }))
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(3)
+    expect(view.queryByTitle('Alpha')).toBeNull()
+    expect(view.getByTitle('Beta')).toBe(betaFrame)
+    expect(view.getByTitle('Gamma')).toBe(gammaFrame)
+
+    window.history.pushState({}, '', '/remounted-frame')
+    fireEvent.click(view.getByRole('tab', { name: /^Alpha$/ }))
+    const remountedAlpha = view.getByTitle('Alpha')
+    expect(remountedAlpha).not.toBe(alphaFrame)
+    expect(new URL(remountedAlpha.getAttribute('src')!).pathname).toBe('/remounted-frame')
+    expect(view.queryByTitle('Beta')).toBeNull()
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(3)
+  })
+
+  it('pins every group active frame in addition to the two-frame LRU', () => {
+    const instance = createDockingLayoutStore().create()
+    const extendedSessions: SessionListState = {
+      ...sessions,
+      ids: [S1, S2, S3, S4],
+      current: S1,
+      byId: {
+        ...sessions.byId,
+        [S4]: { id: S4, displayTitle: 'Delta', running: false, blank: false, updatedAt: 4 },
+      },
+    }
+    instance.actions.setLayout({
+      kind: 'split',
+      axis: 'horizontal',
+      first: { kind: 'group', id: 'group-1', tabs: [S1, S2], active: S1 },
+      second: { kind: 'group', id: 'group-2', tabs: [S3, S4], active: S3 },
+    }, 'group-1', 3)
+    const view = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => (
+        selector(extendedSessions)
+      )) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(2)
+    const alphaFrame = view.getByTitle('Alpha')
+    const gammaFrame = view.getByTitle('Gamma')
+    fireEvent.click(view.getByRole('tab', { name: /^Beta$/ }))
+    const betaFrame = view.getByTitle('Beta')
+    expect(view.getByTitle('Gamma')).toBe(gammaFrame)
+    fireEvent.click(view.getByRole('tab', { name: /^Delta$/ }))
+    const deltaFrame = view.getByTitle('Delta')
+    expect(view.getByTitle('Beta')).toBe(betaFrame)
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(4)
+
+    fireEvent.click(view.getByRole('tab', { name: /^Alpha$/ }))
+    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
+    expect(view.getByTitle('Delta')).toBe(deltaFrame)
+    expect(view.container.querySelectorAll('iframe')).toHaveLength(4)
   })
 
   it('splits a persisted single tab by keeping an unopened Session in the source group', async () => {
@@ -314,10 +487,8 @@ describe('DockingLayout', () => {
 
     await waitFor(() => { expect(view.getAllByRole('article')).toHaveLength(1) })
     const article = view.getByRole('article')
-    article.getBoundingClientRect = () => ({
-      x: 0, y: 0, left: 0, top: 0, right: 400, bottom: 300,
-      width: 400, height: 300, toJSON: () => ({}),
-    })
+    mockBounds(article, 641, 561)
+    act(() => { window.dispatchEvent(new Event('resize')) })
     const dataTransfer = { effectAllowed: 'none', dropEffect: 'move', setData: vi.fn() }
     const alpha = view.getByRole('tab', { name: /^Alpha$/ })
     fireEvent.dragStart(alpha, { dataTransfer })
@@ -591,7 +762,10 @@ describe('DockingLayout', () => {
 
     expect(view.getByRole('article')).toBeTruthy()
     expect(view.getByRole('tab', { name: /^Alpha$/ })).toBeTruthy()
-    expect(view.getByRole('tab', { name: /^Beta$/ })).toBeTruthy()
+    const beta = view.getByRole('tab', { name: /^Beta$/ })
+    expect(beta).toBeTruthy()
+    expect(view.queryByTitle('Beta')).toBeNull()
+    fireEvent.click(beta)
     expect(view.getByTitle('Beta').getAttribute('src')).toContain(
       'dsh-docking-session=session-2',
     )
@@ -639,12 +813,14 @@ describe('DockingLayout', () => {
     fireEvent.click(view.getByRole('button', { name: '关闭标签: Alpha' }))
     expect(view.getAllByRole('tab')).toHaveLength(1)
     expect(view.getByRole('tab', { name: /^Beta$/ })).toBeTruthy()
+    const betaFrame = view.getByTitle('Beta') as HTMLIFrameElement
 
     act(() => {
       workspaceState = { ...workspaceState, phase: 'pending' }
       for (const listener of workspaceListeners) listener()
       window.dispatchEvent(new MessageEvent('message', {
         origin: window.location.origin,
+        source: betaFrame.contentWindow,
         data: {
           type: FRAME_NAVIGATE_MESSAGE,
           sourceSessionId: S2,
@@ -1021,8 +1197,15 @@ describe('plugin wiring', () => {
     expect(footer?.options.store).toBe(entry?.options.store)
     expect(ctx.locale.register).toHaveBeenCalledWith('docking-layout', { zh, en: expect.any(Object) })
 
+    const frameOne = document.createElement('iframe')
+    frameOne.setAttribute('data-docking-layout-session-frame', S1)
+    const frameTwo = document.createElement('iframe')
+    frameTwo.setAttribute('data-docking-layout-session-frame', S2)
+    document.body.append(frameOne, frameTwo)
+
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
+      source: frameOne.contentWindow,
       data: { type: FRAME_READY_MESSAGE, sessionId: S1 },
     }))
     expect(open).toHaveBeenCalledWith(S2)
@@ -1030,6 +1213,7 @@ describe('plugin wiring', () => {
     open.mockClear()
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
+      source: frameTwo.contentWindow,
       data: {
         type: FRAME_NAVIGATE_MESSAGE,
         sourceSessionId: S2,
@@ -1042,6 +1226,7 @@ describe('plugin wiring', () => {
     open.mockClear()
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
+      source: frameTwo.contentWindow,
       data: {
         type: FRAME_NAVIGATE_MESSAGE,
         sourceSessionId: S2,
@@ -1072,8 +1257,26 @@ describe('plugin wiring', () => {
     for (const listener of outerListeners) listener()
     expect(open).toHaveBeenCalledTimes(2)
 
+    const staleSource = frameTwo.contentWindow
+    frameTwo.remove()
+    const remountedFrameTwo = document.createElement('iframe')
+    remountedFrameTwo.setAttribute('data-docking-layout-session-frame', S2)
+    document.body.append(remountedFrameTwo)
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
+      source: staleSource,
+      data: {
+        type: FRAME_NAVIGATE_MESSAGE,
+        sourceSessionId: S2,
+        sessionId: S1,
+        replaceSource: false,
+      },
+    }))
+    expect(open).toHaveBeenCalledTimes(2)
+
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
+      source: frameOne.contentWindow,
       data: { type: FRAME_TOGGLE_SIDEBAR_MESSAGE },
     }))
     expect(ctx.layout.toggleSidebar).toHaveBeenCalledOnce()

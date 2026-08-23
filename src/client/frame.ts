@@ -85,6 +85,21 @@ export function sessionFrameUrl(
   return url.toString()
 }
 
+/** Check that a message came from the currently mounted frame for one Session. */
+export function isMountedFrameMessage(
+  event: MessageEvent<unknown>,
+  sessionId?: SessionId,
+): boolean {
+  if (event.source === null) return false
+  return Array.from(document.querySelectorAll<HTMLIFrameElement>(
+    'iframe[data-docking-layout-session-frame]',
+  )).some(frame => (
+    frame.contentWindow === event.source
+    && (sessionId === undefined
+      || frame.getAttribute('data-docking-layout-session-frame') === sessionId)
+  ))
+}
+
 /**
  * Keep an embedded DSH client on its addressed Session.
  * @param sessions - stock DSH Session service.
