@@ -95,21 +95,24 @@ export function followFrameSession(
   postMessage: PostFrameMessage = postToParent,
 ): () => void {
   let requested = false
+  let requestedPhase: SessionListState['phase'] | undefined
   let announced = false
   const sync = (): void => {
     const state: SessionListState = sessions.list.getSnapshot()
     if (state.byId[sessionId] === undefined) return
     if (state.current !== sessionId) {
-      if (!requested) {
+      if (!requested || requestedPhase !== state.phase) {
         if (announced && state.current !== undefined && state.byId[state.current] !== undefined) {
           postMessage({ type: FRAME_NAVIGATE_MESSAGE, sessionId: state.current })
         }
         requested = true
+        requestedPhase = state.phase
         sessions.open(sessionId)
       }
       return
     }
     requested = false
+    requestedPhase = undefined
     if (!announced) {
       announced = true
       const message: FrameReadyMessage = { type: FRAME_READY_MESSAGE, sessionId }
@@ -237,10 +240,9 @@ export function installFramePresentation(
     ].every(Boolean)
   }
 
-  const observer = new MutationObserver(() => {
-    if (markShell()) observer.disconnect()
-  })
-  if (!markShell()) observer.observe(document.documentElement, { childList: true, subtree: true })
+  const observer = new MutationObserver(markShell)
+  markShell()
+  observer.observe(document.documentElement, { childList: true, subtree: true })
   const handleMobileToggle = (event: MouseEvent): void => {
     const target = event.target
     if (!(target instanceof Element) || target.closest("button[data-mobile-nav='toggle']") === null) {

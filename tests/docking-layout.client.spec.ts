@@ -326,6 +326,96 @@ describe('DockingLayout', () => {
     expect(startSession).toHaveBeenCalledOnce()
   })
 
+  it('waits for an asynchronous New Session before replacing the final tab', async () => {
+    const instance = createDockingLayoutStore().create()
+    let sessionState: SessionListState = sessions
+    const listeners = new Set<() => void>()
+    const sessionSource: HostObservable<SessionListState> = {
+      getSnapshot: () => sessionState,
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+    }
+    const startSession = vi.fn()
+    instance.actions.setLayout({
+      kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
+    }, 'group-1', 2)
+    const view = render(createElement(DockingLayout, {
+      useSessions: bindSnapshotSelector(sessionSource),
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
+        selector(workspaces)
+      )) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession,
+      t: makeTranslate(zh),
+    }))
+
+    fireEvent.click(view.getByRole('button', { name: '关闭标签: Beta' }))
+    expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: '关闭标签: Alpha' }))
+
+    expect(startSession).toHaveBeenCalledOnce()
+    expect(view.getByRole('tab', { name: /^Alpha$/ })).toBeTruthy()
+    expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
+
+    act(() => {
+      sessionState = {
+        ...sessionState,
+        ids: [...sessionState.ids, S4],
+        current: S4,
+        byId: {
+          ...sessionState.byId,
+          [S4]: {
+            id: S4, displayTitle: 'New Session', running: false, blank: true, updatedAt: 4,
+          },
+        },
+      }
+      for (const listener of listeners) listener()
+    })
+
+    await waitFor(() => {
+      expect(view.getByRole('tab', { name: /^New Session$/ })).toBeTruthy()
+    })
+    expect(view.queryByRole('tab', { name: /^Alpha$/ })).toBeNull()
+    expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
+  })
+
+  it('reopens or focuses the unchanged outer Session when its sidebar row is reselected', () => {
+    const instance = createDockingLayoutStore().create()
+    instance.actions.setLayout({
+      kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
+    }, 'group-1', 2)
+    const sidebar = document.createElement('aside')
+    sidebar.dataset.slot = 'sidebar'
+    const selectedRow = document.createElement('div')
+    selectedRow.setAttribute('role', 'treeitem')
+    selectedRow.setAttribute('aria-selected', 'true')
+    sidebar.append(selectedRow)
+    document.body.append(sidebar)
+    const view = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
+        selector(workspaces)
+      )) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    fireEvent.click(view.getByRole('tab', { name: /^Alpha$/ }))
+    expect(view.getByRole('tab', { name: /^Alpha$/ }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(selectedRow)
+    expect(view.getByRole('tab', { name: /^Beta$/ }).getAttribute('aria-selected')).toBe('true')
+
+    fireEvent.click(view.getByRole('button', { name: '关闭标签: Beta' }))
+    expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
+    fireEvent.click(selectedRow)
+    expect(view.getByRole('tab', { name: /^Beta$/ }).getAttribute('aria-selected')).toBe('true')
+  })
+
   it('keeps a newly selected blank Session inside Docking Layout', () => {
     const instance = createDockingLayoutStore().create()
     const blankSessions: SessionListState = {
@@ -721,7 +811,7 @@ describe('plugin wiring', () => {
     expect(disposeLocale).toHaveBeenCalledOnce()
   })
 
-  it('locks an addressed embedded client and removes its duplicate shell chrome', () => {
+  it('locks an addressed embedded client and removes its duplicate shell chrome', async () => {
     let state = sessions
     const listeners = new Set<() => void>()
     const open = vi.fn((id: SessionId) => {
@@ -808,6 +898,29 @@ describe('plugin wiring', () => {
     expect(fireEvent.click(mobileToggle)).toBe(false)
     expect(postFrameMessage).toHaveBeenCalledWith({ type: FRAME_TOGGLE_SIDEBAR_MESSAGE })
 
+    const nextShell = document.createElement('div')
+    const nextSidebarParent = document.createElement('aside')
+    const nextSidebar = document.createElement('div')
+    nextSidebar.dataset.slot = 'sidebar'
+    nextSidebarParent.append(nextSidebar)
+    const nextConversationParent = document.createElement('main')
+    const nextConversation = document.createElement('div')
+    nextConversation.dataset.slot = 'conversation'
+    nextConversationParent.append(nextConversation)
+    const nextDetailsParent = document.createElement('aside')
+    const nextDetails = document.createElement('div')
+    nextDetails.dataset.slot = 'details'
+    nextDetailsParent.append(nextDetails)
+    nextShell.append(nextSidebarParent, nextConversationParent, nextDetailsParent)
+    shell.replaceWith(nextShell)
+
+    await waitFor(() => {
+      expect(nextShell.hasAttribute('data-dsh-docking-frame-shell')).toBe(true)
+      expect(nextSidebarParent.hasAttribute('data-dsh-docking-frame-sidebar')).toBe(true)
+      expect(nextConversationParent.hasAttribute('data-dsh-docking-frame-conversation')).toBe(true)
+      expect(nextDetailsParent.hasAttribute('data-dsh-docking-frame-details')).toBe(true)
+    })
+
     stopFollowing()
     removePresentation()
     fireEvent.click(mobileToggle)
@@ -817,6 +930,44 @@ describe('plugin wiring', () => {
     expect(sidebarParent.hasAttribute('data-dsh-docking-frame-sidebar')).toBe(false)
     expect(conversationParent.hasAttribute('data-dsh-docking-frame-conversation')).toBe(false)
     expect(detailsParent.hasAttribute('data-dsh-docking-frame-details')).toBe(false)
+    expect(nextShell.hasAttribute('data-dsh-docking-frame-shell')).toBe(false)
+    expect(nextSidebarParent.hasAttribute('data-dsh-docking-frame-sidebar')).toBe(false)
+    expect(nextConversationParent.hasAttribute('data-dsh-docking-frame-conversation')).toBe(false)
+    expect(nextDetailsParent.hasAttribute('data-dsh-docking-frame-details')).toBe(false)
+  })
+
+  it('retries an addressed frame Session when the list phase becomes ready', () => {
+    let state: SessionListState = { ...sessions, phase: 'pending' }
+    const listeners = new Set<() => void>()
+    const open = vi.fn((id: SessionId) => {
+      if (open.mock.calls.length < 2) return
+      state = { ...state, current: id }
+      for (const listener of listeners) listener()
+    })
+    const service = {
+      list: {
+        getSnapshot: () => state,
+        subscribe: (listener: () => void) => {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+      },
+      open,
+    }
+    const postFrameMessage = vi.fn()
+    const stop = followFrameSession(service as never, S1, postFrameMessage)
+
+    expect(open).toHaveBeenCalledTimes(1)
+    state = { ...state, phase: 'ready' }
+    for (const listener of listeners) listener()
+
+    expect(open).toHaveBeenCalledTimes(2)
+    expect(open).toHaveBeenLastCalledWith(S1)
+    expect(postFrameMessage).toHaveBeenCalledWith({
+      type: FRAME_READY_MESSAGE,
+      sessionId: S1,
+    })
+    stop()
   })
 
   it('keeps the Host half empty and registers its invariant companion', async () => {

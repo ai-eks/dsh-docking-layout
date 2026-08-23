@@ -48,6 +48,7 @@ interface DropTarget {
 interface PendingFinalClose {
   readonly groupId: string
   readonly sessionId: SessionId
+  readonly outerCurrent: SessionId | undefined
 }
 
 function replaceSession(
@@ -219,7 +220,7 @@ export function DockingLayout({
       const previous = previousNavigation.current
       const replacingFinal = pendingFinalClose !== undefined
         && current !== undefined
-        && current !== pendingFinalClose.sessionId
+        && current !== pendingFinalClose.outerCurrent
       const replacingBlankWorkspace = pendingFinalClose === undefined
         && current !== undefined
         && previous !== UNSEEN_NAVIGATION
@@ -278,7 +279,7 @@ export function DockingLayout({
     if (
       pendingFinalClose !== undefined
       && current !== undefined
-      && current !== pendingFinalClose.sessionId
+      && current !== pendingFinalClose.outerCurrent
       && persistedMatches
     ) {
       setPendingFinalClose(undefined)
@@ -302,6 +303,26 @@ export function DockingLayout({
     document.body.toggleAttribute('data-dsh-docking-layout-active', layoutVisible)
     return () => { document.body.removeAttribute('data-dsh-docking-layout-active') }
   }, [layoutVisible])
+
+  useEffect(() => {
+    const reopenSelectedSidebarSession = (event: MouseEvent): void => {
+      const target = event.target
+      if (!(target instanceof Element) || !layoutVisible || current === undefined) return
+      const row = target.closest('[role="treeitem"][aria-selected="true"]')
+      if (row === null || row.closest('[data-slot="sidebar"]') === null) return
+      const groupId = reconciled.activeGroupId ?? groups[0]?.id
+      if (reconciled.layout === undefined || groupId === undefined) return
+      const result = openTab(reconciled.layout, groupId, current, reconciled.nextGroup)
+      if (
+        !sameLayout(reconciled.layout, result.layout)
+        || reconciled.activeGroupId !== result.activeGroupId
+      ) {
+        actions.setLayout(result.layout, result.activeGroupId, result.nextGroup)
+      }
+    }
+    document.addEventListener('click', reopenSelectedSidebarSession)
+    return () => { document.removeEventListener('click', reopenSelectedSidebarSession) }
+  }, [actions, current, groups, layoutVisible, reconciled])
 
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -480,7 +501,9 @@ export function DockingLayout({
                     title={t('action.closeTab')}
                     onClick={() => {
                       if (sessionIds.length <= 1) {
-                        setPendingFinalClose({ groupId: group.id, sessionId })
+                        setPendingFinalClose({
+                          groupId: group.id, sessionId, outerCurrent: current,
+                        })
                         startSession()
                         return
                       }

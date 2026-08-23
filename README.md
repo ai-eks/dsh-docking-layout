@@ -46,7 +46,7 @@ It is compatible with `dsh-better-sidebar`: Docking Layout follows the native ce
 
 ## Behavior
 
-The initial group opens the current conversation and one nearby eligible conversation as tabs. The Open menu groups remaining conversations by Workspace and excludes archived, blank, current, and subagent Sessions. Selecting a supported Session in the DSH sidebar opens or focuses it in the active group; archived and subagent routes fall back to the native conversation view.
+The initial group opens the current conversation and one nearby eligible conversation as tabs. The Open menu groups remaining conversations by Workspace and excludes archived, blank, current, and subagent Sessions. Selecting a supported Session in the DSH sidebar opens or focuses it in the active group; reselecting the unchanged outer Session does the same even if its docked tab was closed. Archived and subagent routes fall back to the native conversation view.
 
 Dragging a tab to another group's center moves it there; dropping it at a left, right, top, or bottom edge creates an adjacent group. Toolbar buttons split the active tab right or down. At most four groups are kept in the layout; an unavailable edge split is rejected instead of being converted into a tab move. A group collapses automatically after its final tab moves or closes, so no separate Close Group action is needed.
 
