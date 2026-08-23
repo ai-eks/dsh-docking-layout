@@ -36,8 +36,7 @@
     "lib/index.js",
     "lib/client.js",
     "lib/client.js.map",
-    "lib/client/index.d.ts",
-    "lib/client/index.d.ts.map",
+    "lib/client",
     "lib/invariant.d.ts",
     "lib/invariant.js",
     "src"

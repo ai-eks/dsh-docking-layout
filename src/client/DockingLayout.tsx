@@ -1,7 +1,7 @@
 /** VS Code-style Session tabs and drag-to-split conversation groups. */
 import {
-  useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent,
-  type PointerEvent, type ReactNode,
+  useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties,
+  type DragEvent, type PointerEvent, type ReactNode,
 } from 'react'
 import type {
   PropsLocale, PropsRuntime, PropsStore,
@@ -192,6 +192,11 @@ export function DockingLayout({
   const [dragged, setDragged] = useState<DraggedTab>()
   const [dropTarget, setDropTarget] = useState<DropTarget>()
   const [pendingFinalClose, setPendingFinalClose] = useState<PendingFinalClose>()
+  const rootRef = useRef<HTMLElement | null>(null)
+  const groupBodyRefs = useRef(new Map<string, HTMLDivElement>())
+  const framePanelRefs = useRef(new Map<SessionId, HTMLDivElement>())
+  const frameOrder = useRef<SessionId[]>([])
+  const sessionsReady = sessions.phase === 'ready'
   const archived = useMemo(() => new Set(archivedSessionIds), [archivedSessionIds])
   const eligible = useMemo(
     () => sessions.ids.filter((id) => {
@@ -205,6 +210,13 @@ export function DockingLayout({
   )
   const reconciled = useMemo(
     () => {
+      if (!sessionsReady) {
+        return {
+          layout: grid.layout,
+          activeGroupId: grid.activeGroupId,
+          nextGroup: grid.nextGroup,
+        }
+      }
       const previous = previousNavigation.current
       const replacingFinal = pendingFinalClose !== undefined
         && current !== undefined
@@ -233,10 +245,20 @@ export function DockingLayout({
     },
     [
       current, eligible, grid.activeGroupId, grid.layout, grid.nextGroup, pendingFinalClose,
-      sessions,
+      sessions, sessionsReady,
     ],
   )
   const sessionIds = useMemo(() => collectSessionIds(reconciled.layout), [reconciled.layout])
+  const frameSessionIds = useMemo(() => {
+    const present = new Set(sessionIds)
+    const ordered = frameOrder.current.filter(id => present.has(id))
+    const known = new Set(ordered)
+    for (const id of sessionIds) {
+      if (!known.has(id)) ordered.push(id)
+    }
+    frameOrder.current = ordered
+    return ordered
+  }, [sessionIds])
   const groups = useMemo(() => collectGroups(reconciled.layout), [reconciled.layout])
   const currentIsEligible = current !== undefined && eligible.includes(current)
   const persistedMatches = sameLayout(grid.layout, reconciled.layout)
@@ -244,8 +266,8 @@ export function DockingLayout({
     && grid.nextGroup === reconciled.nextGroup
 
   useEffect(() => {
-    previousNavigation.current = current
-  }, [current])
+    if (sessionsReady) previousNavigation.current = current
+  }, [current, sessionsReady])
 
   useEffect(() => {
     if (!persistedMatches) {
@@ -276,11 +298,44 @@ export function DockingLayout({
     return () => { window.removeEventListener('message', focusGroup) }
   }, [actions, groups, reconciled])
 
-  const layoutVisible = grid.enabled && currentIsEligible
+  const layoutVisible = grid.enabled && sessionsReady && currentIsEligible
   useEffect(() => {
     document.body.toggleAttribute('data-dsh-docking-layout-active', layoutVisible)
     return () => { document.body.removeAttribute('data-dsh-docking-layout-active') }
   }, [layoutVisible])
+
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!layoutVisible || reconciled.layout === undefined || root === null) return
+    const sync = (): void => {
+      const rootRect = root.getBoundingClientRect()
+      for (const group of groups) {
+        const body = groupBodyRefs.current.get(group.id)
+        if (body === undefined) continue
+        const rect = body.getBoundingClientRect()
+        for (const sessionId of group.tabs) {
+          const panel = framePanelRefs.current.get(sessionId)
+          if (panel === undefined) continue
+          panel.style.left = `${rect.left - rootRect.left}px`
+          panel.style.top = `${rect.top - rootRect.top}px`
+          panel.style.width = `${rect.width}px`
+          panel.style.height = `${rect.height}px`
+        }
+      }
+    }
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(sync)
+    resize?.observe(root)
+    for (const group of groups) {
+      const body = groupBodyRefs.current.get(group.id)
+      if (body !== undefined) resize?.observe(body)
+    }
+    window.addEventListener('resize', sync)
+    sync()
+    return () => {
+      resize?.disconnect()
+      window.removeEventListener('resize', sync)
+    }
+  }, [frameSessionIds, groups, layoutVisible, reconciled.activeGroupId, reconciled.layout, surfaceStyle])
 
   const commit = (result: SessionLayoutResult): void => {
     actions.setLayout(result.layout, result.activeGroupId, result.nextGroup)
@@ -489,25 +544,13 @@ export function DockingLayout({
           </div>
         </div>
 
-        <div className={css.groupBody}>
-          {group.tabs.map(sessionId => (
-            <div
-              key={sessionId}
-              id={`session-tabpanel-${group.id}-${sessionId}`}
-              className={css.tabPanel}
-              role="tabpanel"
-              hidden={sessionId !== active}
-            >
-              <iframe
-                className={css.sessionFrame}
-                src={sessionFrameUrl(sessionId)}
-                title={sessions.byId[sessionId]?.displayTitle ?? sessionId}
-                allow="clipboard-read; clipboard-write"
-                referrerPolicy="same-origin"
-              />
-            </div>
-          ))}
-        </div>
+        <div
+          className={css.groupBody}
+          ref={(element) => {
+            if (element === null) groupBodyRefs.current.delete(group.id)
+            else groupBodyRefs.current.set(group.id, element)
+          }}
+        />
         {dropTarget?.groupId === group.id ? (
           <div className={css.dropIndicator} data-zone={dropTarget.zone} aria-hidden="true" />
         ) : null}
@@ -533,6 +576,7 @@ export function DockingLayout({
 
   return (
     <section
+      ref={rootRef}
       className={css.root}
       style={surfaceStyle}
       data-docking-layout=""
@@ -557,6 +601,34 @@ export function DockingLayout({
         </nav>
       ) : null}
       <div className={css.layout}>{renderLayout(layout)}</div>
+      <div className={css.framePool}>
+        {frameSessionIds.map((sessionId) => {
+          const owner = groups.find(group => group.tabs.includes(sessionId))
+          if (owner === undefined) return null
+          return (
+            <div
+              key={sessionId}
+              id={`session-tabpanel-${owner.id}-${sessionId}`}
+              className={css.tabPanel}
+              role="tabpanel"
+              hidden={sessionId !== owner.active}
+              data-group-active={owner.id === reconciled.activeGroupId || undefined}
+              ref={(element) => {
+                if (element === null) framePanelRefs.current.delete(sessionId)
+                else framePanelRefs.current.set(sessionId, element)
+              }}
+            >
+              <iframe
+                className={css.sessionFrame}
+                src={sessionFrameUrl(sessionId)}
+                title={sessions.byId[sessionId]?.displayTitle ?? sessionId}
+                allow="clipboard-read; clipboard-write"
+                referrerPolicy="same-origin"
+              />
+            </div>
+          )
+        })}
+      </div>
     </section>
   )
 }

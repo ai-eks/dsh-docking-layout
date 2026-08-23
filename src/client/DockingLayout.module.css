@@ -214,8 +214,17 @@ body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
   overflow: hidden;
 }
 
-.tabPanel {
+.framePool {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
+  pointer-events: none;
+}
+
+.tabPanel {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: auto;
 }
 
 .sessionFrame {
@@ -357,6 +366,10 @@ body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
 
   .layout .divider,
   .layout .group:not([data-active]) {
+    display: none;
+  }
+
+  .framePool .tabPanel:not([data-group-active]) {
     display: none;
   }
 

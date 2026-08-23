@@ -180,6 +180,7 @@ describe('DockingLayout', () => {
     expect(view.getByTitle('Beta').getAttribute('src')).toContain('dsh-docking-session=session-2')
     expect(view.queryByTitle('Gamma')).toBeNull()
 
+    const alphaFrame = view.getByTitle('Alpha')
     const alpha = view.getByRole('tab', { name: /^Alpha$/ })
     const dataTransfer = { effectAllowed: 'none', setData: vi.fn() }
     fireEvent.dragStart(alpha, { dataTransfer })
@@ -193,6 +194,7 @@ describe('DockingLayout', () => {
     fireEvent.click(view.getByRole('button', { name: '将当前标签拆分到右侧' }))
     expect(view.getAllByRole('article')).toHaveLength(2)
     expect(view.container.querySelectorAll('iframe')).toHaveLength(2)
+    expect(view.getByTitle('Alpha')).toBe(alphaFrame)
     expect(view.container.querySelectorAll('[data-docking-layout-top-right]')).toHaveLength(1)
     expect(
       view.container.querySelector('[data-docking-layout-top-right]')?.getAttribute('aria-label'),
@@ -436,6 +438,48 @@ describe('DockingLayout', () => {
 
     act(() => { instance.actions.setEnabled(true) })
     expect(view.getByRole('tab', { name: /^Gamma$/ }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('preserves the persisted split tree until the Session list is ready', async () => {
+    const instance = createDockingLayoutStore().create()
+    const savedLayout: SessionLayoutNode = {
+      kind: 'split',
+      axis: 'horizontal',
+      first: { kind: 'group', id: 'group-1', tabs: [S1], active: S1 },
+      second: { kind: 'group', id: 'group-2', tabs: [S2], active: S2 },
+    }
+    instance.actions.setLayout(savedLayout, 'group-2', 3)
+    let sessionState: SessionListState = {
+      ...sessions, ids: [], byId: {}, current: undefined, phase: 'pending',
+    }
+    const listeners = new Set<() => void>()
+    const sessionSource: HostObservable<SessionListState> = {
+      getSnapshot: () => sessionState,
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+    }
+    const view = render(createElement(DockingLayout, {
+      useSessions: bindSnapshotSelector(sessionSource),
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
+        selector(workspaces)
+      )) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }))
+
+    expect(instance.getSnapshot().layout).toEqual(savedLayout)
+    expect(view.container.firstChild).toBeNull()
+
+    act(() => {
+      sessionState = { ...sessions, current: S2 }
+      for (const listener of listeners) listener()
+    })
+    await waitFor(() => { expect(view.getAllByRole('article')).toHaveLength(2) })
+    expect(instance.getSnapshot().layout).toEqual(savedLayout)
   })
 
   it('excludes archived Sessions from tabs and the open list', async () => {
