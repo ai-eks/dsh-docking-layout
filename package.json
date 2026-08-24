@@ -1,8 +1,10 @@
 {
   "name": "@ai-eks/dsh-docking-layout",
   "description": "Dockable Session tabs and drag-to-split conversation groups for DeepSeek Harness",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1-rc.2",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ai-eks/dsh-docking-layout.git"
@@ -32,6 +34,7 @@
     "README.md",
     "README.zh.md",
     "cordis.patch.yml",
+    "docs/images",
     "lib/index.d.ts",
     "lib/index.js",
     "lib/client.js",
