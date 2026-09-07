@@ -18,7 +18,7 @@ import { apply as nodeApply } from '../src/index.ts'
 import * as invariant from '../src/invariant.ts'
 import { styleModule } from '../tsdown.config.ts'
 import { apply, inject } from '../src/client/index.ts'
-import { DockingLayout, DockingLayoutFooterAction } from '../src/client/DockingLayout.tsx'
+import { DockingLayout, DockingLayoutFooterAction, type DockingLayoutProps } from '../src/client/DockingLayout.tsx'
 import {
   FRAME_FOCUS_MESSAGE, FRAME_NAVIGATE_MESSAGE, FRAME_READY_MESSAGE,
   FRAME_TOGGLE_SIDEBAR_MESSAGE,
@@ -534,7 +534,8 @@ describe('DockingLayout', () => {
         return () => { listeners.delete(listener) }
       },
     }
-    const startSession = vi.fn(() => {
+    const startSession = vi.fn<DockingLayoutProps['startSession']>((onStarted) => {
+      onStarted(S4)
       sessionState = {
         ...sessionState,
         ids: sessionState.ids.includes(S4) ? sessionState.ids : [...sessionState.ids, S4],
@@ -598,7 +599,7 @@ describe('DockingLayout', () => {
         return () => { workspaceListeners.delete(listener) }
       },
     }
-    const startSession = vi.fn()
+    const startSession = vi.fn<DockingLayoutProps['startSession']>()
     instance.actions.setLayout({
       kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
     }, 'group-1', 2)
@@ -633,6 +634,7 @@ describe('DockingLayout', () => {
     expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
 
     act(() => {
+      startSession.mock.calls[0]![0](S4)
       workspaceState = { ...workspaceState, phase: 'pending' }
       for (const listener of workspaceListeners) listener()
       sessionState = {
@@ -663,9 +665,37 @@ describe('DockingLayout', () => {
     expect(view.queryByRole('tab', { name: /^Beta$/ })).toBeNull()
   })
 
-  it('does not treat unrelated navigation as the pending final-tab replacement', async () => {
+  it('keeps the final tab and allows retry when starting its replacement fails', () => {
     const instance = createDockingLayoutStore().create()
-    let sessionState: SessionListState = { ...sessions, current: S1 }
+    instance.actions.setLayout({
+      kind: 'group', id: 'group-1', tabs: [S2], active: S2,
+    }, 'group-1', 2)
+    const startSession = vi.fn<DockingLayoutProps['startSession']>()
+    const view = render(createElement(DockingLayout, {
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession,
+      t: makeTranslate(zh),
+    }))
+    const close = view.getByRole<HTMLButtonElement>('button', { name: '关闭标签: Beta' })
+    fireEvent.click(close)
+    expect(close.disabled).toBe(true)
+    act(() => { startSession.mock.calls[0]![0](undefined) })
+    expect(close.disabled).toBe(false)
+    expect(view.getByRole('tab', { name: /^Beta$/ })).toBeTruthy()
+    fireEvent.click(close)
+    expect(startSession).toHaveBeenCalledTimes(2)
+    expect(close.disabled).toBe(true)
+  })
+
+  it.each([false, true])('does not treat unrelated navigation (blank=%s) as the pending final-tab replacement', async (blank) => {
+    const instance = createDockingLayoutStore().create()
+    let sessionState: SessionListState = {
+      ...sessions, current: S1,
+      byId: { ...sessions.byId, [S2]: { ...sessions.byId[S2]!, blank } },
+    }
     const listeners = new Set<() => void>()
     const sessionSource: HostObservable<SessionListState> = {
       getSnapshot: () => sessionState,
@@ -674,7 +704,7 @@ describe('DockingLayout', () => {
         return () => { listeners.delete(listener) }
       },
     }
-    const startSession = vi.fn()
+    const startSession = vi.fn<DockingLayoutProps['startSession']>()
     instance.actions.setLayout({
       kind: 'group', id: 'group-1', tabs: [S1], active: S1,
     }, 'group-1', 2)
@@ -700,6 +730,7 @@ describe('DockingLayout', () => {
     expect(view.getByRole('tab', { name: /^Alpha$/ })).toBeTruthy()
 
     act(() => {
+      startSession.mock.calls[0]![0](S4)
       sessionState = {
         ...sessionState,
         ids: [...sessionState.ids, S4],
@@ -1186,7 +1217,7 @@ describe('plugin wiring', () => {
     expect(initial?.textContent).toBe('.root{color:blue}')
   })
 
-  it('registers only stock root slots and restores outer navigation after frame startup', () => {
+  it('registers only stock root slots and restores outer navigation after frame startup', async () => {
     const open = vi.fn()
     let outerSessions = sessions
     const outerListeners = new Set<() => void>()
@@ -1206,8 +1237,18 @@ describe('plugin wiring', () => {
           },
         },
         open,
+        clear: vi.fn(),
       },
-      uiWorkspace: { startSession: vi.fn() },
+      workspaces: {
+        list: { getSnapshot: () => ({
+          ...workspaces,
+          items: [
+            { workspaceId: wid('workspace-b'), sessionIds: [S3] },
+            { workspaceId: wid('workspace-a'), sessionIds: [S1, S2] },
+          ],
+        }) },
+      },
+      uiWorkspace: { connectWorkspace: vi.fn().mockResolvedValue(S4) },
       layout: { toggleSidebar: vi.fn() },
       slots: {
         inject: vi.fn((_name: string, install: () => () => void) => {
@@ -1226,10 +1267,41 @@ describe('plugin wiring', () => {
     expect(entry?.component).toBe(DockingLayout)
     expect(entry?.options.id).toBe('docking-layout')
     expect(entry?.options.locale).toBe('docking-layout')
-    const injected = (entry?.options.inject as (() => { startSession: () => void }))()
-    injected.startSession()
-    expect(ctx.uiWorkspace.startSession).toHaveBeenCalledOnce()
-    expect(inject).toEqual(['slots', 'sessions', 'uiWorkspace', 'locale', 'layout'])
+    const injected = (entry?.options.inject as (() => Pick<DockingLayoutProps, 'startSession'>))()
+    const onStarted = vi.fn()
+    injected.startSession(onStarted)
+    expect(ctx.uiWorkspace.connectWorkspace).toHaveBeenLastCalledWith(wid('workspace-a'))
+    expect(onStarted).not.toHaveBeenCalled()
+    await Promise.resolve()
+    expect(onStarted).toHaveBeenCalledWith(S4)
+    expect(onStarted.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0]!)
+    expect(open).toHaveBeenCalledWith(S4)
+
+    outerSessions = { ...sessions, current: S3 }
+    injected.startSession(onStarted)
+    expect(ctx.uiWorkspace.connectWorkspace).toHaveBeenLastCalledWith(wid('workspace-b'))
+    await Promise.resolve()
+    outerSessions = { ...sessions, current: undefined }
+    injected.startSession(onStarted)
+    expect(ctx.uiWorkspace.connectWorkspace).toHaveBeenLastCalledWith(wid('workspace-a'))
+    await Promise.resolve()
+    outerSessions = { ...sessions, current: undefined, phase: 'pending' }
+    injected.startSession(onStarted)
+    expect(onStarted).toHaveBeenLastCalledWith(undefined)
+    expect(ctx.sessions.clear).toHaveBeenCalledOnce()
+    outerSessions = sessions
+
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const failure = new Error('connection failed')
+    ctx.uiWorkspace.connectWorkspace.mockRejectedValueOnce(failure)
+    open.mockClear()
+    injected.startSession(onStarted)
+    await Promise.resolve()
+    expect(onStarted).toHaveBeenLastCalledWith(undefined)
+    expect(open).not.toHaveBeenCalled()
+    expect(warning).toHaveBeenCalledWith('new session failed:', failure)
+    warning.mockRestore()
+    expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'layout'])
     const footer = entries.get('sidebar.footer.action')
     expect(footer?.component).toBe(DockingLayoutFooterAction)
     expect(footer?.options.store).toBe(entry?.options.store)

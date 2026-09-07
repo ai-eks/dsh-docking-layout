@@ -44,7 +44,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'docking-layout'
 
 /** Services required by the browser-only layout overlay. */
-export const inject = ['slots', 'sessions', 'uiWorkspace', 'locale', 'layout']
+export const inject = ['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'layout']
 
 /**
  * Register Docking Layout over the stock conversation column.
@@ -114,7 +114,42 @@ export function apply(ctx: ClientContext): void {
     order: 10,
     locale: NS,
     store,
-    inject: () => ({ startSession: () => { ctx.uiWorkspace.startSession() } }),
+    inject: () => ({
+      startSession: (onStarted: (sessionId: SessionId | undefined) => void) => {
+        const sessions = ctx.sessions.list.getSnapshot()
+        const workspaces = ctx.workspaces.list.getSnapshot()
+        let target = workspaces.items.find(item => (
+          sessions.current !== undefined && item.sessionIds.includes(sessions.current)
+        ))?.workspaceId
+        // Preserve DSH's current-or-most-recent Workspace selection policy.
+        if (target === undefined && sessions.phase === 'ready' && workspaces.phase === 'ready') {
+          let latest = Number.NEGATIVE_INFINITY
+          for (const workspace of workspaces.items) {
+            let updatedAt = workspace.sessionIds.reduce((time, id) => (
+              Math.max(time, sessions.byId[id]?.updatedAt ?? Number.NEGATIVE_INFINITY)
+            ), Number.NEGATIVE_INFINITY)
+            if (updatedAt === Number.NEGATIVE_INFINITY) updatedAt = Date.parse(workspace.createdAt)
+            if (target === undefined || updatedAt > latest) {
+              target = workspace.workspaceId
+              latest = updatedAt
+            }
+          }
+        }
+        if (target === undefined) {
+          onStarted(undefined)
+          ctx.sessions.clear()
+          return
+        }
+        // startSession() returns void; connectWorkspace() identifies this exact result.
+        ctx.uiWorkspace.connectWorkspace(target).then((sessionId) => {
+          onStarted(sessionId)
+          ctx.sessions.open(sessionId)
+        }, (reason: unknown) => {
+          onStarted(undefined)
+          console.warn('new session failed:', reason)
+        })
+      },
+    }),
   }, DockingLayout))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',

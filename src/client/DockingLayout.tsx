@@ -33,7 +33,7 @@ export type DockingLayoutProps =
   PropsRuntime<'shell.overlay'>
   & PropsStore<ReturnType<typeof createDockingLayoutStore>>
   & PropsLocale<'docking-layout'>
-  & { startSession: () => void }
+  & { startSession: (onStarted: (sessionId: SessionId | undefined) => void) => void }
 
 /** Props for the root-scoped sidebar footer affordance. */
 export type DockingLayoutFooterActionProps =
@@ -54,6 +54,7 @@ interface DropTarget {
 interface PendingFinalClose {
   readonly groupId: string
   readonly outerCurrent: SessionId | undefined
+  readonly sessionId?: SessionId
 }
 
 interface PendingFrameReplacement {
@@ -258,6 +259,7 @@ export function DockingLayout({
   )
   const pendingReplacement = pendingFinalClose !== undefined
     && current !== undefined
+    && current === pendingFinalClose.sessionId
     && sessions.byId[current]?.blank === true
   const frameReplacementReady = pendingFrameReplacement !== undefined
     && current === pendingFrameReplacement.sessionId
@@ -590,11 +592,18 @@ export function DockingLayout({
                     onClick={() => {
                       if (sessionIds.length <= 1) {
                         if (pendingFinalClose !== undefined) return
-                        setPendingFinalClose({
+                        const request: PendingFinalClose = {
                           groupId: group.id,
                           outerCurrent: current,
+                        }
+                        setPendingFinalClose(request)
+                        startSession((replacement) => {
+                          setPendingFinalClose(pending => pending !== request
+                            ? pending
+                            : replacement === undefined
+                              ? undefined
+                              : { ...request, sessionId: replacement })
                         })
-                        startSession()
                         return
                       }
                       const result = closeTab(
