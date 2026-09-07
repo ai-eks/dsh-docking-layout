@@ -17,9 +17,16 @@ A DeepSeek Harness Web UI plugin for organizing unlimited conversation tabs into
 - Unlimited tabs and groups, with no fixed pane-size guard.
 - Drag a tab to another group to move it, or to an edge to split; toolbar buttons split right or down.
 - At widths up to 760 pixels, one full-width group is shown at a time with a group switcher.
-- Closing a tab changes only the browser layout and never deletes its DSH Session.
+- Switching to single-column mode hides the docked panes; reopening Docking Layout restores the groups.
+- Closing a tab changes only the browser layout and never deletes its DSH Session. Closing the final tab opens a blank Session, reusing an existing blank Session when DSH selects one.
 
 ## Install
+
+From npm:
+
+```sh
+dsh plugin --profile web add @ai-eks/dsh-docking-layout@latest
+```
 
 From Git:
 
@@ -54,7 +61,7 @@ Only layout preferences are stored locally. The plugin does not copy Session log
 
 ## Compatibility
 
-Supports DeepSeek Harness `0.1.0-rc.8` and `0.1.1-rc.2`, and is compatible with `dsh-better-sidebar`.
+Requires DeepSeek Harness `^0.1.2-rc.1` and Cordis `^4.0.2`. Earlier DSH releases do not provide the required client store and controller packages. Compatible with `dsh-better-sidebar`.
 
 ## Development
 

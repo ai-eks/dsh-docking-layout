@@ -6,9 +6,7 @@ import {
 import type {
   PropsLocale, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   IconChevronDownOutline14, IconChevronRightOutline14, IconCloseFill14,
   StateDot,
@@ -24,12 +22,18 @@ import {
 } from './frame.ts'
 import css from './DockingLayout.module.css'
 
+/** Retain slot and standard-prop augmentations in published declarations. */
+export type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+export type {} from '@deepseek-ai/dsh-client-ui-session/client'
+export type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+export type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+
 /** Complete props of the root-scoped Docking Layout overlay. */
 export type DockingLayoutProps =
   PropsRuntime<'shell.overlay'>
   & PropsStore<ReturnType<typeof createDockingLayoutStore>>
   & PropsLocale<'docking-layout'>
-  & { startSession: () => void }
+  & { startSession: (onStarted: (sessionId: SessionId | undefined) => void) => void }
 
 /** Props for the root-scoped sidebar footer affordance. */
 export type DockingLayoutFooterActionProps =
@@ -50,7 +54,7 @@ interface DropTarget {
 interface PendingFinalClose {
   readonly groupId: string
   readonly outerCurrent: SessionId | undefined
-  readonly knownSessionIds: readonly SessionId[]
+  readonly sessionId?: SessionId
 }
 
 interface PendingFrameReplacement {
@@ -255,8 +259,7 @@ export function DockingLayout({
   )
   const pendingReplacement = pendingFinalClose !== undefined
     && current !== undefined
-    && current !== pendingFinalClose.outerCurrent
-    && !pendingFinalClose.knownSessionIds.includes(current)
+    && current === pendingFinalClose.sessionId
     && sessions.byId[current]?.blank === true
   const frameReplacementReady = pendingFrameReplacement !== undefined
     && current === pendingFrameReplacement.sessionId
@@ -329,8 +332,9 @@ export function DockingLayout({
     if (
       pendingFinalClose !== undefined
       && current !== undefined
-      && current !== pendingFinalClose.outerCurrent
-      && (!pendingReplacement || (dataReady && persistedMatches))
+      && (pendingReplacement
+        ? dataReady && persistedMatches
+        : current !== pendingFinalClose.outerCurrent)
     ) {
       setPendingFinalClose(undefined)
     }
@@ -588,12 +592,18 @@ export function DockingLayout({
                     onClick={() => {
                       if (sessionIds.length <= 1) {
                         if (pendingFinalClose !== undefined) return
-                        setPendingFinalClose({
+                        const request: PendingFinalClose = {
                           groupId: group.id,
                           outerCurrent: current,
-                          knownSessionIds: [...sessions.ids],
+                        }
+                        setPendingFinalClose(request)
+                        startSession((replacement) => {
+                          setPendingFinalClose(pending => pending !== request
+                            ? pending
+                            : replacement === undefined
+                              ? undefined
+                              : { ...request, sessionId: replacement })
                         })
-                        startSession()
                         return
                       }
                       const result = closeTab(

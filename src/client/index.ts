@@ -1,10 +1,7 @@
 /** Browser plugin that overlays stock DSH with dockable, same-origin Session frames. */
-import type {
-  ClientContext, SessionId, SessionListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { DockingLayout, DockingLayoutFooterAction } from './DockingLayout.tsx'
 import {
   followFrameSession, frameSessionId, installFramePresentation, isFrameNavigateMessage,
@@ -12,6 +9,10 @@ import {
 } from './frame.ts'
 import { createDockingLayoutStore } from './stores.ts'
 import { en, zh, type DockingLayoutKey } from './locales.ts'
+
+/** Retain client service augmentations in published declarations. */
+export type {} from '@deepseek-ai/dsh-client-locale/client'
+export type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 
 export { DockingLayout, DockingLayoutFooterAction } from './DockingLayout.tsx'
 export type {
@@ -43,7 +44,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'docking-layout'
 
 /** Services required by the browser-only layout overlay. */
-export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'layout']
+export const inject = ['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'layout']
 
 /**
  * Register Docking Layout over the stock conversation column.
@@ -113,7 +114,42 @@ export function apply(ctx: ClientContext): void {
     order: 10,
     locale: NS,
     store,
-    inject: () => ({ startSession: () => { ctx.workspaces.startSession() } }),
+    inject: () => ({
+      startSession: (onStarted: (sessionId: SessionId | undefined) => void) => {
+        const sessions = ctx.sessions.list.getSnapshot()
+        const workspaces = ctx.workspaces.list.getSnapshot()
+        let target = workspaces.items.find(item => (
+          sessions.current !== undefined && item.sessionIds.includes(sessions.current)
+        ))?.workspaceId
+        // Preserve DSH's current-or-most-recent Workspace selection policy.
+        if (target === undefined && sessions.phase === 'ready' && workspaces.phase === 'ready') {
+          let latest = Number.NEGATIVE_INFINITY
+          for (const workspace of workspaces.items) {
+            let updatedAt = workspace.sessionIds.reduce((time, id) => (
+              Math.max(time, sessions.byId[id]?.updatedAt ?? Number.NEGATIVE_INFINITY)
+            ), Number.NEGATIVE_INFINITY)
+            if (updatedAt === Number.NEGATIVE_INFINITY) updatedAt = Date.parse(workspace.createdAt)
+            if (target === undefined || updatedAt > latest) {
+              target = workspace.workspaceId
+              latest = updatedAt
+            }
+          }
+        }
+        if (target === undefined) {
+          onStarted(undefined)
+          ctx.sessions.clear()
+          return
+        }
+        // startSession() returns void; connectWorkspace() identifies this exact result.
+        ctx.uiWorkspace.connectWorkspace(target).then((sessionId) => {
+          onStarted(sessionId)
+          ctx.sessions.open(sessionId)
+        }, (reason: unknown) => {
+          onStarted(undefined)
+          console.warn('new session failed:', reason)
+        })
+      },
+    }),
   }, DockingLayout))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',

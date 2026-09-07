@@ -17,9 +17,16 @@
 - Tab 和分组数量不限，不设置固定的窗格尺寸门槛。
 - 把 Tab 拖到另一分组可直接移动，拖到边缘可拆分；工具栏支持向右或向下拆分。
 - 宽度不超过 760 像素时，一次显示一个全宽分组，并通过分组切换栏导航。
-- 关闭 Tab 只改变浏览器布局，不会删除对应的 DSH Session。
+- 切回单栏模式会隐藏停靠窗格，再次启用停靠布局会恢复分组。
+- 关闭 Tab 只改变浏览器布局，不会删除对应的 DSH Session。关闭最后一个 Tab 会打开空白会话；DSH 选中已有空白会话时会复用它。
 
 ## 安装
+
+从 npm 安装：
+
+```sh
+dsh plugin --profile web add @ai-eks/dsh-docking-layout@latest
+```
 
 从 Git 安装：
 
@@ -54,7 +61,7 @@ iframe 池会保留每个分组的活动 Tab，以及最近使用的 2 个非活
 
 ## 兼容性
 
-支持 DeepSeek Harness `0.1.0-rc.8` 和 `0.1.1-rc.2`，并兼容 `dsh-better-sidebar`。
+要求 DeepSeek Harness `^0.1.2-rc.1` 和 Cordis `^4.0.2`。更早的 DSH 版本不提供所需的 client store 和 controller 包。兼容 `dsh-better-sidebar`。
 
 ## 开发验证
 

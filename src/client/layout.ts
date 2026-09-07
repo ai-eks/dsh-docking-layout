@@ -1,5 +1,5 @@
 /** Immutable editor-group operations for the browser-only Session layout. */
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /** Edge or center target used by tab drag-and-drop. */
 export type DropZone = 'center' | 'left' | 'right' | 'top' | 'bottom'
