@@ -17,6 +17,7 @@ A DeepSeek Harness Web UI plugin for organizing unlimited conversation tabs into
 - Unlimited tabs and groups, with no fixed pane-size guard.
 - Drag a tab to another group to move it, or to an edge to split; toolbar buttons split right or down.
 - At widths up to 760 pixels, one full-width group is shown at a time with a group switcher.
+- Switching to single-column mode hides the docked panes; reopening Docking Layout restores the groups.
 - Closing a tab changes only the browser layout and never deletes its DSH Session. Closing the final tab opens a blank Session, reusing an existing blank Session when DSH selects one.
 
 ## Install

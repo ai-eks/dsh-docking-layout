@@ -11,6 +11,10 @@
   pointer-events: auto;
 }
 
+.root[hidden] {
+  display: none;
+}
+
 :global(body[data-dsh-docking-layout-active]) button[data-mobile-nav='fab'] {
   display: none !important;
 }

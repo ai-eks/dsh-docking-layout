@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 /** Docking Layout grouping, lifecycle, and drag-target semantics. */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { transform } from 'lightningcss'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { createElement, StrictMode, useSyncExternalStore } from 'react'
@@ -1144,6 +1147,28 @@ describe('DockingLayout', () => {
 })
 
 describe('plugin wiring', () => {
+  it('hides the retained layout when switching to single-column mode', () => {
+    const file = resolve(import.meta.dirname, '../src/client/DockingLayout.module.css')
+    const compiled = transform({
+      filename: file,
+      code: readFileSync(file),
+      cssModules: { pattern: '[hash]_[local]' },
+    })
+    const style = document.createElement('style')
+    style.dataset.pluginCss = 'mode-switch-test'
+    style.textContent = compiled.code.toString()
+    document.head.append(style)
+    const root = document.createElement('section')
+    root.className = compiled.exports!.root!.name
+    document.body.append(root)
+
+    expect(getComputedStyle(root).display).toBe('flex')
+    root.hidden = true
+    expect(getComputedStyle(root).display).toBe('none')
+    root.hidden = false
+    expect(getComputedStyle(root).display).toBe('flex')
+  })
+
   it('updates the existing generated stylesheet during hot reload', () => {
     const runStyleModule = (css: string): void => {
       const source = styleModule('/tmp/DockingLayout.module.css', css, { root: 'root' })
