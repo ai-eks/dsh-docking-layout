@@ -1,7 +1,7 @@
 /** Persisted browser-only state for Docking Layout. */
 import {
   defineStore, type EngineStoreHandle,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-store'
 import type { SessionLayoutNode } from './layout.ts'
 
 /** Session-workbench viewing preferences; Session data remains Host-owned. */
