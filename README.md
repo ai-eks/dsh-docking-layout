@@ -22,6 +22,12 @@ A DeepSeek Harness Web UI plugin for organizing unlimited conversation tabs into
 
 ## Install
 
+From npm:
+
+```sh
+dsh plugin --profile web add @ai-eks/dsh-docking-layout@latest
+```
+
 From Git:
 
 ```sh

@@ -22,6 +22,12 @@
 
 ## 安装
 
+从 npm 安装：
+
+```sh
+dsh plugin --profile web add @ai-eks/dsh-docking-layout@latest
+```
+
 从 Git 安装：
 
 ```sh
