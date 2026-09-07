@@ -6,9 +6,7 @@ import {
 import type {
   PropsLocale, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   IconChevronDownOutline14, IconChevronRightOutline14, IconCloseFill14,
   StateDot,
@@ -23,6 +21,12 @@ import {
   isFrameFocusMessage, isFrameNavigateMessage, isMountedFrameMessage, sessionFrameUrl,
 } from './frame.ts'
 import css from './DockingLayout.module.css'
+
+/** Retain slot and standard-prop augmentations in published declarations. */
+export type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+export type {} from '@deepseek-ai/dsh-client-ui-session/client'
+export type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+export type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 
 /** Complete props of the root-scoped Docking Layout overlay. */
 export type DockingLayoutProps =

@@ -3,9 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { createElement, StrictMode, useSyncExternalStore } from 'react'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
-  SessionId, SessionListState, WorkspaceId, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  WorkspaceId, WorkspaceSnapshot as WorkspaceListState,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   HostObservable, SnapshotSelectorHook,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -73,7 +75,6 @@ const sessions: SessionListState = {
 
 const workspaces: WorkspaceListState = {
   items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
-  baselinesReady: true, recentWorkspaceId: undefined,
 }
 
 beforeEach(() => {
@@ -1169,7 +1170,7 @@ describe('plugin wiring', () => {
         },
         open,
       },
-      workspaces: { startSession: vi.fn() },
+      uiWorkspace: { startSession: vi.fn() },
       layout: { toggleSidebar: vi.fn() },
       slots: {
         inject: vi.fn((_name: string, install: () => () => void) => {
@@ -1183,7 +1184,6 @@ describe('plugin wiring', () => {
       },
     }
 
-    expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'locale', 'layout'])
     apply(ctx as never)
     const entry = entries.get('shell.overlay')
     expect(entry?.component).toBe(DockingLayout)
@@ -1191,7 +1191,8 @@ describe('plugin wiring', () => {
     expect(entry?.options.locale).toBe('docking-layout')
     const injected = (entry?.options.inject as (() => { startSession: () => void }))()
     injected.startSession()
-    expect(ctx.workspaces.startSession).toHaveBeenCalledOnce()
+    expect(ctx.uiWorkspace.startSession).toHaveBeenCalledOnce()
+    expect(inject).toEqual(['slots', 'sessions', 'uiWorkspace', 'locale', 'layout'])
     const footer = entries.get('sidebar.footer.action')
     expect(footer?.component).toBe(DockingLayoutFooterAction)
     expect(footer?.options.store).toBe(entry?.options.store)

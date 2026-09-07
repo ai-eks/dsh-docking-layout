@@ -54,7 +54,7 @@ Only layout preferences are stored locally. The plugin does not copy Session log
 
 ## Compatibility
 
-Supports DeepSeek Harness `0.1.0-rc.8` and `0.1.1-rc.2`, and is compatible with `dsh-better-sidebar`.
+Requires DeepSeek Harness `^0.1.2-rc.1` and Cordis `^4.0.2`. Earlier DSH releases do not provide the required client store and controller packages. Compatible with `dsh-better-sidebar`.
 
 ## Development
 

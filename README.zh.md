@@ -54,7 +54,7 @@ iframe 池会保留每个分组的活动 Tab，以及最近使用的 2 个非活
 
 ## 兼容性
 
-支持 DeepSeek Harness `0.1.0-rc.8` 和 `0.1.1-rc.2`，并兼容 `dsh-better-sidebar`。
+要求 DeepSeek Harness `^0.1.2-rc.1` 和 Cordis `^4.0.2`。更早的 DSH 版本不提供所需的 client store 和 controller 包。兼容 `dsh-better-sidebar`。
 
 ## 开发验证
 
