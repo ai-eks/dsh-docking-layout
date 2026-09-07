@@ -54,7 +54,6 @@ interface DropTarget {
 interface PendingFinalClose {
   readonly groupId: string
   readonly outerCurrent: SessionId | undefined
-  readonly knownSessionIds: readonly SessionId[]
 }
 
 interface PendingFrameReplacement {
@@ -259,8 +258,6 @@ export function DockingLayout({
   )
   const pendingReplacement = pendingFinalClose !== undefined
     && current !== undefined
-    && current !== pendingFinalClose.outerCurrent
-    && !pendingFinalClose.knownSessionIds.includes(current)
     && sessions.byId[current]?.blank === true
   const frameReplacementReady = pendingFrameReplacement !== undefined
     && current === pendingFrameReplacement.sessionId
@@ -333,8 +330,9 @@ export function DockingLayout({
     if (
       pendingFinalClose !== undefined
       && current !== undefined
-      && current !== pendingFinalClose.outerCurrent
-      && (!pendingReplacement || (dataReady && persistedMatches))
+      && (pendingReplacement
+        ? dataReady && persistedMatches
+        : current !== pendingFinalClose.outerCurrent)
     ) {
       setPendingFinalClose(undefined)
     }
@@ -595,7 +593,6 @@ export function DockingLayout({
                         setPendingFinalClose({
                           groupId: group.id,
                           outerCurrent: current,
-                          knownSessionIds: [...sessions.ids],
                         })
                         startSession()
                         return

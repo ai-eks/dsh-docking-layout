@@ -511,9 +511,18 @@ describe('DockingLayout', () => {
     expect(view.getByRole('article', { name: '会话分组 2' }).textContent).toContain('Alpha')
   })
 
-  it('replaces the final tab with a blank New Session without leaving Docking Layout', async () => {
+  it.each(['new', 'existing', 'current'] as const)('closes into a %s blank Session', async (blankSource) => {
     const instance = createDockingLayoutStore().create()
-    let sessionState: SessionListState = { ...sessions, current: S1 }
+    const blankSession = {
+      id: S4, displayTitle: 'New Session', running: false, blank: true, updatedAt: 4,
+    }
+    const finalTab = blankSource === 'current' ? S4 : S1
+    let sessionState: SessionListState = {
+      ...sessions,
+      current: finalTab,
+      ids: blankSource === 'new' ? sessions.ids : [...sessions.ids, S4],
+      byId: blankSource === 'new' ? sessions.byId : { ...sessions.byId, [S4]: blankSession },
+    }
     const listeners = new Set<() => void>()
     const sessionSource: HostObservable<SessionListState> = {
       getSnapshot: () => sessionState,
@@ -525,19 +534,17 @@ describe('DockingLayout', () => {
     const startSession = vi.fn(() => {
       sessionState = {
         ...sessionState,
-        ids: [...sessionState.ids, S4],
+        ids: sessionState.ids.includes(S4) ? sessionState.ids : [...sessionState.ids, S4],
         current: S4,
         byId: {
           ...sessionState.byId,
-          [S4]: {
-            id: S4, displayTitle: 'New Session', running: false, blank: true, updatedAt: 4,
-          },
+          [S4]: blankSession,
         },
       }
       for (const listener of listeners) listener()
     })
     instance.actions.setLayout({
-      kind: 'group', id: 'group-1', tabs: [S1], active: S1,
+      kind: 'group', id: 'group-1', tabs: [finalTab], active: finalTab,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       useSessions: bindSnapshotSelector(sessionSource),
@@ -548,7 +555,9 @@ describe('DockingLayout', () => {
       t: makeTranslate(zh),
     }))
 
-    const close = view.getByRole<HTMLButtonElement>('button', { name: '关闭标签: Alpha' })
+    const close = view.getByRole<HTMLButtonElement>('button', {
+      name: `关闭标签: ${blankSource === 'current' ? 'New Session' : 'Alpha'}`,
+    })
     expect(close.disabled).toBe(false)
     fireEvent.click(close)
 
@@ -560,6 +569,9 @@ describe('DockingLayout', () => {
       'dsh-docking-session=session-4',
     )
     expect(instance.getSnapshot().enabled).toBe(true)
+    expect(view.getByRole<HTMLButtonElement>('button', {
+      name: '关闭标签: New Session',
+    }).disabled).toBe(false)
     expect(startSession).toHaveBeenCalledOnce()
   })
 
