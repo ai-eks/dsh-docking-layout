@@ -149,7 +149,7 @@ function useConversationSurface(): CSSProperties {
     let observed: Element | undefined
     let discovery: MutationObserver | undefined
     const measure = (): void => {
-      const nextObserved = document.querySelector('[data-slot="conversation"]')?.parentElement
+      const nextObserved = document.querySelector('[data-slot="main"]')?.parentElement
       if (nextObserved === null || nextObserved === undefined) return
       if (observed !== nextObserved) {
         if (observed !== undefined) resize?.unobserve(observed)
@@ -162,8 +162,8 @@ function useConversationSurface(): CSSProperties {
     }
     const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
     const containsConversationSlot = (node: Node): boolean => node instanceof Element && (
-      node.matches('[data-slot="conversation"]')
-      || node.querySelector('[data-slot="conversation"]') !== null
+      node.matches('[data-slot="main"]')
+      || node.querySelector('[data-slot="main"]') !== null
     )
     discovery = new MutationObserver((records) => {
       const surfaceChanged = records.some(record => (
@@ -222,9 +222,10 @@ export function DockingLayoutFooterAction({
  * @returns the current single-pane or tabbed workbench layout.
  */
 export function DockingLayout({
-  useSessions, useStore, actions, useWorkspaces, startSession, t,
+  useSessions, usePanelInfo, useStore, actions, useWorkspaces, startSession, t,
 }: DockingLayoutProps): ReactNode {
   const sessions = useSessions(state => state)
+  const activePanelId = usePanelInfo(state => state.activePanelId)
   const current = sessions.current
   const workspaceState = useWorkspaces(state => state)
   const archivedSessionIds = workspaceState.archivedSessionIds
@@ -367,7 +368,7 @@ export function DockingLayout({
     return () => { window.removeEventListener('message', handleFrameMessage) }
   }, [actions, groups, reconciled])
 
-  const layoutVisible = grid.enabled && dataReady && currentIsEligible
+  const layoutVisible = grid.enabled && activePanelId === null && dataReady && currentIsEligible
   if (layoutVisible) layoutHasMounted.current = true
   useEffect(() => {
     document.body.toggleAttribute('data-dsh-docking-layout-active', layoutVisible)

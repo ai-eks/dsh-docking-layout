@@ -16,6 +16,10 @@ export const zh = {
   'tab.dragHint': '拖到分组边缘可拆分',
   'empty.title': '至少需要一个已有对话',
   'empty.hint': '先在侧栏创建并发送一条消息，再打开会话工作台。',
+  'preview.title': '共享文件预览',
+  'preview.fullscreen': '全屏预览',
+  'preview.restore': '退出全屏预览',
+  'preview.close': '收起共享预览',
 } satisfies Record<string, string>
 
 /** Docking Layout dictionary key union. */
@@ -39,4 +43,8 @@ export const en = {
   'tab.dragHint': 'Drag to a group edge to split',
   'empty.title': 'At least one existing conversation is required',
   'empty.hint': 'Create a session in the sidebar and send a message before opening the workbench.',
+  'preview.title': 'Shared file preview',
+  'preview.fullscreen': 'Fullscreen preview',
+  'preview.restore': 'Exit fullscreen preview',
+  'preview.close': 'Collapse shared preview',
 } satisfies Record<DockingLayoutKey, string>

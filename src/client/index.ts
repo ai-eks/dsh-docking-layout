@@ -9,6 +9,7 @@ import {
 } from './frame.ts'
 import { createDockingLayoutStore } from './stores.ts'
 import { en, zh, type DockingLayoutKey } from './locales.ts'
+import { forwardPreview, installPreviewFrame, installSharedPreview, PREVIEW_MESSAGE, PREVIEW_SESSION_PARAM } from './preview.tsx'
 
 /** Retain client service augmentations in published declarations. */
 export type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -44,13 +45,20 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'docking-layout'
 
 /** Services required by the browser-only layout overlay. */
-export const inject = ['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'layout']
+export const inject = ['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'layout', 'sidebarRight']
 
 /**
  * Register Docking Layout over the stock conversation column.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
+  const previewSession = window.parent !== window
+    ? new URL(window.location.href).searchParams.get(PREVIEW_SESSION_PARAM)
+    : null
+  if (previewSession) {
+    ctx.effect(() => installPreviewFrame(ctx, previewSession as SessionId), 'docking-layout: persistent preview frame')
+    return
+  }
   const addressedSession = frameSessionId()
   if (addressedSession !== undefined) {
     ctx.effect(installFramePresentation, 'docking-layout: embedded frame presentation')
@@ -58,10 +66,14 @@ export function apply(ctx: ClientContext): void {
       () => followFrameSession(ctx.sessions, addressedSession),
       'docking-layout: embedded frame Session selection',
     )
+    ctx.effect(() => forwardPreview(ctx.sidebarRight, command => {
+      window.parent.postMessage({ type: PREVIEW_MESSAGE, ...command }, window.location.origin)
+    }), 'docking-layout: forward embedded file previews')
     return
   }
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'docking-layout: dictionaries')
+  installSharedPreview(ctx)
   const store = createDockingLayoutStore()
   ctx.effect(() => {
     let pendingNavigation: SessionId | undefined
@@ -80,7 +92,7 @@ export function apply(ctx: ClientContext): void {
       if (requestedPhase === sessions.phase && requestedCurrent === sessions.current) return
       requestedPhase = sessions.phase
       requestedCurrent = sessions.current
-      ctx.sessions.open(pendingNavigation)
+      ctx.uiWorkspace.openSession(pendingNavigation)
     }
     const handleFrameMessage = (event: MessageEvent<unknown>): void => {
       if (isFrameNavigateMessage(event)) {
@@ -138,12 +150,18 @@ export function apply(ctx: ClientContext): void {
         if (target === undefined) {
           onStarted(undefined)
           ctx.sessions.clear()
+          ctx.layout.selectPanel(null)
           return
         }
         // startSession() returns void; connectWorkspace() identifies this exact result.
+        const navigation = ctx.layout.beginNavigation()
         ctx.uiWorkspace.connectWorkspace(target).then((sessionId) => {
+          if (navigation.aborted) {
+            onStarted(undefined)
+            return
+          }
           onStarted(sessionId)
-          ctx.sessions.open(sessionId)
+          ctx.uiWorkspace.openSession(sessionId)
         }, (reason: unknown) => {
           onStarted(undefined)
           console.warn('new session failed:', reason)

@@ -17,7 +17,7 @@ A DeepSeek Harness Web UI plugin for organizing unlimited conversation tabs into
 - Unlimited tabs and groups, with no fixed pane-size guard.
 - Drag a tab to another group to move it, or to an edge to split; toolbar buttons split right or down.
 - At widths up to 760 pixels, one full-width group is shown at a time with a group switcher.
-- Switching to single-column mode hides the docked panes; reopening Docking Layout restores the groups.
+- Switching to single-column mode or another main panel hides the docked panes; returning restores the groups.
 - Closing a tab changes only the browser layout and never deletes its DSH Session. Closing the final tab opens a blank Session, reusing an existing blank Session when DSH selects one.
 
 ## Install
@@ -53,15 +53,15 @@ Enable Docking Layout from the DSH sidebar footer. Open Sessions from the group 
 
 ## Performance and limitations
 
-The iframe pool keeps every group's active tab plus the two most recently used inactive tabs mounted. Revisiting an evicted tab reloads its embedded client. More groups therefore use more browser memory and DSH Web connections.
+The iframe pool keeps every group's active tab plus the two most recently used inactive tabs mounted. Revisiting an evicted tab reloads its embedded client. The shared preview keeps one additional iframe mounted. More groups therefore use more browser memory and DSH Web connections.
 
-The global details panel and companion plugins still follow the outer DSH Session. Archived Sessions and subagent routes use the native conversation view. Touch layouts use split buttons and the group switcher instead of tab dragging.
+A shared right sidebar keeps native file-preview tabs open independently of Session and group selection. File links from any conversation open in that same sidebar; collapsing it preserves its contents. Its file browser starts in the first Session's Workspace. Preview state lasts for the current page and is reset on reload. Companion plugins still follow the outer DSH Session. Archived Sessions and subagent routes use the native conversation view. Touch layouts use split buttons and the group switcher instead of tab dragging.
 
 Only layout preferences are stored locally. The plugin does not copy Session logs, prompts, approvals, or files, and all embedded pages are same-origin. It adds no model-visible prompts, tools, messages, or Session events.
 
 ## Compatibility
 
-Requires DeepSeek Harness `^0.1.2-rc.1` and Cordis `^4.0.2`. Earlier DSH releases do not provide the required client store and controller packages. Compatible with `dsh-better-sidebar`.
+Requires DeepSeek Harness `^0.1.5-rc.1` and Cordis `^4.0.2`. This version uses the main-panel navigation and layout contracts introduced in DSH 0.1.5. For DSH 0.1.2, use plugin `0.1.2-rc.1`.
 
 ## Development
 

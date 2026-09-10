@@ -85,7 +85,7 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/')
   const surface = document.createElement('main')
   const anchor = document.createElement('div')
-  anchor.dataset.slot = 'conversation'
+  anchor.dataset.slot = 'main'
   surface.append(anchor)
   surface.getBoundingClientRect = () => ({
     x: 48, y: 0, left: 48, top: 0, right: 948, bottom: 700,
@@ -191,13 +191,46 @@ describe('editor-group operations', () => {
 })
 
 describe('DockingLayout', () => {
+  it('hides for other main panels and restores the same Session frames', () => {
+    const instance = createDockingLayoutStore().create()
+    let activePanelId: string | null = null
+    const props = {
+      usePanelInfo: ((selector: (state: { activePanelId: string | null }) => unknown) => (
+        selector({ activePanelId })
+      )) as DockingLayoutProps['usePanelInfo'],
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
+      useStore: bindSnapshotSelector(instance.store),
+      actions: instance.actions,
+      startSession: vi.fn(),
+      t: makeTranslate(zh),
+    }
+    const view = render(createElement(DockingLayout, props))
+    const root = view.container.querySelector<HTMLElement>('[data-docking-layout]')!
+    const frame = view.getByTitle('Beta')
+    const layout = instance.getSnapshot().layout
+    expect(root.style.visibility).not.toBe('hidden')
+
+    activePanelId = 'test-panel'
+    view.rerender(createElement(DockingLayout, props))
+    expect(root.hidden).toBe(true)
+    expect(document.body.hasAttribute('data-dsh-docking-layout-active')).toBe(false)
+    expect(instance.getSnapshot().layout).toEqual(layout)
+
+    activePanelId = null
+    view.rerender(createElement(DockingLayout, props))
+    expect(root.hidden).toBe(false)
+    expect(view.getByTitle('Beta')).toBe(frame)
+  })
+
   it('tracks a replacement conversation surface without a window resize', async () => {
     const instance = createDockingLayoutStore().create()
-    const initialSurface = document.querySelector('[data-slot="conversation"]')!.parentElement!
+    const initialSurface = document.querySelector('[data-slot="main"]')!.parentElement!
     const initialRect = initialSurface.getBoundingClientRect.bind(initialSurface)
     const measureInitial = vi.fn(initialRect)
     initialSurface.getBoundingClientRect = measureInitial
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -210,14 +243,14 @@ describe('DockingLayout', () => {
 
     const measurementCount = measureInitial.mock.calls.length
     await act(async () => {
-      document.querySelector('[data-slot="conversation"]')!.append(document.createElement('p'))
+      document.querySelector('[data-slot="main"]')!.append(document.createElement('p'))
       await new Promise(resolve => { setTimeout(resolve, 0) })
     })
     expect(measureInitial).toHaveBeenCalledTimes(measurementCount)
 
     const replacement = document.createElement('main')
     const anchor = document.createElement('div')
-    anchor.dataset.slot = 'conversation'
+    anchor.dataset.slot = 'main'
     replacement.append(anchor)
     replacement.getBoundingClientRect = () => ({
       x: 100, y: 20, left: 100, top: 20, right: 600, bottom: 620,
@@ -236,6 +269,7 @@ describe('DockingLayout', () => {
   it('keeps same-origin Session frames mounted and splits by button', async () => {
     const instance = createDockingLayoutStore().create()
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -316,6 +350,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -351,6 +386,7 @@ describe('DockingLayout', () => {
       second: { kind: 'group', id: 'group-2', tabs: [S2], active: S2 },
     }, 'group-2', 3)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -393,6 +429,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [S1, S2, S3, S4, S5], active: S1,
     }, 'group-1', 2)
     const view = render(createElement(StrictMode, null, createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
         selector(extendedSessions)
       )) as never,
@@ -445,6 +482,7 @@ describe('DockingLayout', () => {
       second: { kind: 'group', id: 'group-2', tabs: [S3, S4], active: S3 },
     }, 'group-1', 3)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
         selector(extendedSessions)
       )) as never,
@@ -479,6 +517,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [S1], active: S1,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
         selector(singleTabSessions)
       )) as never,
@@ -551,6 +590,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [finalTab], active: finalTab,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: bindSnapshotSelector(sessionSource),
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -604,6 +644,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: bindSnapshotSelector(sessionSource),
       useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
@@ -672,6 +713,7 @@ describe('DockingLayout', () => {
     }, 'group-1', 2)
     const startSession = vi.fn<DockingLayoutProps['startSession']>()
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -709,6 +751,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [S1], active: S1,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: bindSnapshotSelector(sessionSource),
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
@@ -764,6 +807,7 @@ describe('DockingLayout', () => {
     sidebar.append(selectedRow)
     document.body.append(sidebar)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
@@ -799,6 +843,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [S2], active: S2,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(blankSessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -849,6 +894,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [S1, S2], active: S2,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: bindSnapshotSelector(sessionSource),
       useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
@@ -912,6 +958,7 @@ describe('DockingLayout', () => {
     instance.actions.setEnabled(false)
     const view = render(createElement(DockingLayoutFooterAction, {
       wide: true,
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -950,6 +997,7 @@ describe('DockingLayout', () => {
     }, 'group-1', 2)
     instance.actions.setEnabled(false)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: bindSnapshotSelector(sessionSource),
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
@@ -993,6 +1041,7 @@ describe('DockingLayout', () => {
       },
     }
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: bindSnapshotSelector(sessionSource),
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
@@ -1030,6 +1079,7 @@ describe('DockingLayout', () => {
       },
     }
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
         selector({ ...sessions, current: S1 })
       )) as never,
@@ -1060,6 +1110,7 @@ describe('DockingLayout', () => {
       archivedSessionIds: [S1],
     }
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(archivedWorkspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -1077,6 +1128,7 @@ describe('DockingLayout', () => {
   it('falls back to the native view for archived and subagent navigation targets', () => {
     const instance = createDockingLayoutStore().create()
     const archivedView = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
         selector({ ...sessions, current: S1 })
       )) as never,
@@ -1106,6 +1158,7 @@ describe('DockingLayout', () => {
       },
     }
     const subagentView = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
         selector(subagentSessions)
       )) as never,
@@ -1157,6 +1210,7 @@ describe('DockingLayout', () => {
       kind: 'group', id: 'group-1', tabs: [S1], active: S1,
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
+      usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
         selector(visibleSessions)
       )) as never,
@@ -1248,8 +1302,13 @@ describe('plugin wiring', () => {
           ],
         }) },
       },
-      uiWorkspace: { connectWorkspace: vi.fn().mockResolvedValue(S4) },
-      layout: { toggleSidebar: vi.fn() },
+      sidebarRight: { openResource: vi.fn(), openTab: vi.fn() },
+      uiWorkspace: { connectWorkspace: vi.fn().mockResolvedValue(S4), openSession: open },
+      layout: {
+        toggleSidebar: vi.fn(),
+        selectPanel: vi.fn(),
+        beginNavigation: vi.fn(() => new AbortController().signal),
+      },
       slots: {
         inject: vi.fn((_name: string, install: () => () => void) => {
           disposers.push(install())
@@ -1289,7 +1348,18 @@ describe('plugin wiring', () => {
     injected.startSession(onStarted)
     expect(onStarted).toHaveBeenLastCalledWith(undefined)
     expect(ctx.sessions.clear).toHaveBeenCalledOnce()
+    expect(ctx.layout.selectPanel).toHaveBeenCalledWith(null)
     outerSessions = sessions
+
+    const superseded = new AbortController()
+    ctx.layout.beginNavigation.mockReturnValueOnce(superseded.signal)
+    open.mockClear()
+    onStarted.mockClear()
+    injected.startSession(onStarted)
+    superseded.abort()
+    await Promise.resolve()
+    expect(onStarted).toHaveBeenCalledWith(undefined)
+    expect(open).not.toHaveBeenCalled()
 
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const failure = new Error('connection failed')
@@ -1301,7 +1371,7 @@ describe('plugin wiring', () => {
     expect(open).not.toHaveBeenCalled()
     expect(warning).toHaveBeenCalledWith('new session failed:', failure)
     warning.mockRestore()
-    expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'layout'])
+    expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'layout', 'sidebarRight'])
     const footer = entries.get('sidebar.footer.action')
     expect(footer?.component).toBe(DockingLayoutFooterAction)
     expect(footer?.options.store).toBe(entry?.options.store)
@@ -1418,15 +1488,16 @@ describe('plugin wiring', () => {
     const root = document.createElement('div')
     root.dataset.slot = 'root'
     const shell = document.createElement('div')
+    shell.style.gridTemplateColumns = '240px minmax(0, 1fr) 0px'
     const sidebarParent = document.createElement('aside')
     const sidebar = document.createElement('div')
     sidebar.dataset.slot = 'sidebar'
     sidebarParent.append(sidebar)
-    const conversation = document.querySelector('[data-slot="conversation"]')!
+    const conversation = document.querySelector('[data-slot="main"]')!
     const conversationParent = conversation.parentElement!
     const detailsParent = document.createElement('aside')
     const details = document.createElement('div')
-    details.dataset.slot = 'details'
+    details.dataset.slot = 'rightbar'
     detailsParent.append(details)
     const mobileToggle = document.createElement('button')
     mobileToggle.dataset.mobileNav = 'toggle'
@@ -1469,7 +1540,8 @@ describe('plugin wiring', () => {
     expect(shell.hasAttribute('data-dsh-docking-frame-shell')).toBe(true)
     expect(sidebarParent.hasAttribute('data-dsh-docking-frame-sidebar')).toBe(true)
     expect(conversationParent.hasAttribute('data-dsh-docking-frame-conversation')).toBe(true)
-    expect(detailsParent.hasAttribute('data-dsh-docking-frame-details')).toBe(true)
+    expect(detailsParent.hasAttribute('data-dsh-docking-frame-rightbar')).toBe(true)
+    expect(getComputedStyle(detailsParent).display).toBe('none')
     const frameStyle = document.head.querySelector<HTMLStyleElement>(
       '[data-dsh-docking-frame-style]',
     )
@@ -1493,17 +1565,18 @@ describe('plugin wiring', () => {
     querySelector.mockRestore()
 
     const nextShell = document.createElement('div')
+    nextShell.style.gridTemplateColumns = '240px minmax(0, 1fr) 320px'
     const nextSidebarParent = document.createElement('aside')
     const nextSidebar = document.createElement('div')
     nextSidebar.dataset.slot = 'sidebar'
     nextSidebarParent.append(nextSidebar)
     const nextConversationParent = document.createElement('main')
     const nextConversation = document.createElement('div')
-    nextConversation.dataset.slot = 'conversation'
+    nextConversation.dataset.slot = 'main'
     nextConversationParent.append(nextConversation)
     const nextDetailsParent = document.createElement('aside')
     const nextDetails = document.createElement('div')
-    nextDetails.dataset.slot = 'details'
+    nextDetails.dataset.slot = 'rightbar'
     nextDetailsParent.append(nextDetails)
     nextShell.append(nextSidebarParent, nextConversationParent, nextDetailsParent)
     shell.replaceWith(nextShell)
@@ -1512,7 +1585,8 @@ describe('plugin wiring', () => {
       expect(nextShell.hasAttribute('data-dsh-docking-frame-shell')).toBe(true)
       expect(nextSidebarParent.hasAttribute('data-dsh-docking-frame-sidebar')).toBe(true)
       expect(nextConversationParent.hasAttribute('data-dsh-docking-frame-conversation')).toBe(true)
-      expect(nextDetailsParent.hasAttribute('data-dsh-docking-frame-details')).toBe(true)
+      expect(nextDetailsParent.hasAttribute('data-dsh-docking-frame-rightbar')).toBe(true)
+      expect(getComputedStyle(nextDetailsParent).display).toBe('none')
     })
 
     stopFollowing()
@@ -1523,11 +1597,11 @@ describe('plugin wiring', () => {
     expect(shell.hasAttribute('data-dsh-docking-frame-shell')).toBe(false)
     expect(sidebarParent.hasAttribute('data-dsh-docking-frame-sidebar')).toBe(false)
     expect(conversationParent.hasAttribute('data-dsh-docking-frame-conversation')).toBe(false)
-    expect(detailsParent.hasAttribute('data-dsh-docking-frame-details')).toBe(false)
+    expect(detailsParent.hasAttribute('data-dsh-docking-frame-rightbar')).toBe(false)
     expect(nextShell.hasAttribute('data-dsh-docking-frame-shell')).toBe(false)
     expect(nextSidebarParent.hasAttribute('data-dsh-docking-frame-sidebar')).toBe(false)
     expect(nextConversationParent.hasAttribute('data-dsh-docking-frame-conversation')).toBe(false)
-    expect(nextDetailsParent.hasAttribute('data-dsh-docking-frame-details')).toBe(false)
+    expect(nextDetailsParent.hasAttribute('data-dsh-docking-frame-rightbar')).toBe(false)
   })
 
   it('retries an addressed frame Session when the list phase becomes ready', () => {

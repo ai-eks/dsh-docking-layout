@@ -226,11 +226,11 @@ body[data-dsh-docking-frame] [data-dsh-docking-frame-shell] {
   grid-template-columns: 0 minmax(0, 1fr) 0 !important;
 }
 body[data-dsh-docking-frame] [data-dsh-docking-frame-sidebar],
-body[data-dsh-docking-frame] [data-dsh-docking-frame-details],
+body[data-dsh-docking-frame] [data-dsh-docking-frame-rightbar],
 body[data-dsh-docking-frame] [data-shell-overlay],
 body[data-dsh-docking-frame] [data-dsh-panel-host],
 body[data-dsh-docking-frame] [data-side='sidebar'],
-body[data-dsh-docking-frame] [data-side='details'] {
+body[data-dsh-docking-frame] [data-side='rightbar'] {
   display: none !important;
 }
 body[data-dsh-docking-frame] [data-dsh-docking-frame-conversation] {
@@ -264,8 +264,8 @@ export function installFramePresentation(
   const markShell = (): boolean => {
     const root = document.querySelector('[data-slot="root"]')
     const sidebar = document.querySelector('[data-slot="sidebar"]')
-    const conversation = document.querySelector('[data-slot="conversation"]')
-    const details = document.querySelector('[data-slot="details"]')
+    const conversation = document.querySelector('[data-slot="main"]')
+    const details = document.querySelector('[data-slot="rightbar"]')
     const shellElement = root?.firstElementChild ?? null
     const sidebarElement = sidebar?.parentElement ?? null
     const conversationElement = conversation?.parentElement ?? null
@@ -275,16 +275,16 @@ export function installFramePresentation(
       mark(shellElement, 'data-dsh-docking-frame-shell'),
       mark(sidebarElement, 'data-dsh-docking-frame-sidebar'),
       mark(conversationElement, 'data-dsh-docking-frame-conversation'),
-      mark(detailsElement, 'data-dsh-docking-frame-details'),
+      mark(detailsElement, 'data-dsh-docking-frame-rightbar'),
     ].every(Boolean)
     if (complete) activeShell = new Set(elements.filter(element => element !== null))
     return complete
   }
 
   const containsShellSlot = (node: Node): boolean => node instanceof Element && (
-    node.matches('[data-slot="root"], [data-slot="sidebar"], [data-slot="conversation"], [data-slot="details"]')
+    node.matches('[data-slot="root"], [data-slot="sidebar"], [data-slot="main"], [data-slot="rightbar"]')
     || node.querySelector(
-      '[data-slot="root"], [data-slot="sidebar"], [data-slot="conversation"], [data-slot="details"]',
+      '[data-slot="root"], [data-slot="sidebar"], [data-slot="main"], [data-slot="rightbar"]',
     ) !== null
   )
   const observer = new MutationObserver((records) => {
@@ -322,7 +322,7 @@ export function installFramePresentation(
       element.removeAttribute('data-dsh-docking-frame-shell')
       element.removeAttribute('data-dsh-docking-frame-sidebar')
       element.removeAttribute('data-dsh-docking-frame-conversation')
-      element.removeAttribute('data-dsh-docking-frame-details')
+      element.removeAttribute('data-dsh-docking-frame-rightbar')
     }
   }
 }
