@@ -20,6 +20,12 @@ export const zh = {
   'preview.fullscreen': '全屏预览',
   'preview.restore': '退出全屏预览',
   'preview.close': '收起共享预览',
+  'files.workspaces': '工作区文件',
+  'files.noWorkspaces': '请先在左侧添加工作区',
+  'files.reload': '重新读取文件列表',
+  'files.loading': '正在读取…',
+  'files.empty': '此目录为空',
+  'files.truncated': '目录条目过多，仅显示部分内容',
 } satisfies Record<string, string>
 
 /** Docking Layout dictionary key union. */
@@ -47,4 +53,10 @@ export const en = {
   'preview.fullscreen': 'Fullscreen preview',
   'preview.restore': 'Exit fullscreen preview',
   'preview.close': 'Collapse shared preview',
+  'files.workspaces': 'Workspace files',
+  'files.noWorkspaces': 'Add a workspace in the left sidebar first',
+  'files.reload': 'Reload file list',
+  'files.loading': 'Loading…',
+  'files.empty': 'This directory is empty',
+  'files.truncated': 'Too many entries; only part of this directory is shown',
 } satisfies Record<DockingLayoutKey, string>

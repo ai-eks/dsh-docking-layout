@@ -10,6 +10,7 @@ import {
 import { createDockingLayoutStore } from './stores.ts'
 import { en, zh, type DockingLayoutKey } from './locales.ts'
 import { forwardPreview, installPreviewFrame, installSharedPreview, PREVIEW_MESSAGE, PREVIEW_SESSION_PARAM } from './preview.tsx'
+import { installWorkspaceFiles } from './workspace-files.tsx'
 
 /** Retain client service augmentations in published declarations. */
 export type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -56,6 +57,8 @@ export function apply(ctx: ClientContext): void {
     ? new URL(window.location.href).searchParams.get(PREVIEW_SESSION_PARAM)
     : null
   if (previewSession) {
+    ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'docking-layout: preview dictionaries')
+    ctx.inject(['remote', 'remote.workspaceFiles'], installWorkspaceFiles)
     ctx.effect(() => installPreviewFrame(ctx, previewSession as SessionId), 'docking-layout: persistent preview frame')
     return
   }

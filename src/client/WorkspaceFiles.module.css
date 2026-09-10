@@ -1,0 +1,12 @@
+.root { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--dsw-alias-label-primary); }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 12px; border-bottom: 1px solid var(--dsw-alias-border-l2); font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.reload { display: grid; place-items: center; width: 28px; height: 28px; padding: 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.tree { overflow: auto; flex: 1; min-height: 0; margin: 0; padding: 0 8px 12px; list-style: none; }
+.nested { margin: 0; padding-left: 18px; list-style: none; }
+.row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 4px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.row > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row > svg, .spacer { width: 14px; flex-shrink: 0; }
+.workspace { font-weight: 500; margin-top: 4px; }
+.row:hover, .reload:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.row:disabled { opacity: .5; cursor: default; }
+.note { padding: 8px; font-size: 12px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
