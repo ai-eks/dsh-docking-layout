@@ -130,4 +130,52 @@ describe('multi-workspace file tree', () => {
     expect(files.state.getSnapshot()[key]!.levels[A.path]).toEqual({ loading: false, result: result() })
     files.dispose()
   })
+
+  it('records a rejected child listing without losing other roots and recovers through reload', async () => {
+    const list = vi.fn().mockResolvedValue(result(ROOT))
+    const files = createWorkspaceFiles(vi.fn(), list)
+    const lifetime = new AbortController()
+    const a = workspaceTreeKey('tab', A.workspaceId)
+    const b = workspaceTreeKey('tab', B.workspaceId)
+    files.toggleWorkspace('tab', A, lifetime.signal)
+    files.toggleWorkspace('tab', B, lifetime.signal)
+    await Promise.resolve()
+    const otherRoot = files.state.getSnapshot()[b]
+    list.mockRejectedValueOnce(new Error('Connection lost'))
+    files.toggle(a, `${A.path}/src`)
+    await waitFor(() => {
+      expect(files.state.getSnapshot()[a]!.levels[`${A.path}/src`]).toEqual({
+        loading: false, result: { ok: false, error: { message: 'Connection lost' } },
+      })
+    })
+    expect(files.state.getSnapshot()[a]!.levels[A.path]).toEqual({ loading: false, result: result(ROOT) })
+    expect(files.state.getSnapshot()[b]).toBe(otherRoot)
+    list.mockResolvedValue(result())
+    files.reload('tab', [A], lifetime.signal)
+    await Promise.resolve()
+    expect(files.state.getSnapshot()[a]!.levels[`${A.path}/src`]).toEqual({ loading: false, result: result() })
+    lifetime.abort()
+  })
+
+  it.each(['reload', 'close'] as const)('handles a rejected child request when %s aborts it', async (action) => {
+    const list = vi.fn().mockResolvedValue(result(ROOT))
+    const files = createWorkspaceFiles(vi.fn(), list)
+    const lifetime = new AbortController()
+    const key = workspaceTreeKey('tab', A.workspaceId)
+    files.toggleWorkspace('tab', A, lifetime.signal)
+    await Promise.resolve()
+    list.mockImplementationOnce((_id, _path, signal: AbortSignal) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => { reject(new DOMException('Cancelled', 'AbortError')) }, { once: true })
+    }))
+    files.toggle(key, `${A.path}/src`)
+    if (action === 'reload') files.reload('tab', [A], lifetime.signal)
+    else lifetime.abort()
+    // Allow rejected fire-and-forget requests to surface as unhandled errors.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    if (action === 'reload') {
+      expect(files.state.getSnapshot()[key]!.levels[`${A.path}/src`]).toEqual({ loading: false, result: result(ROOT) })
+      expect(files.state.getSnapshot()[key]!.error).toBeUndefined()
+    } else expect(files.state.getSnapshot()).toEqual({})
+    lifetime.abort()
+  })
 })

@@ -39,7 +39,13 @@ export function createWorkspaceFiles(
     const signal = signals.get(id)
     if (tree?.sessionId === undefined || signal === undefined || signal.aborted) return
     put(id, { ...tree, levels: { ...tree.levels, [path]: { loading: true } } })
-    const result = await list(tree.sessionId, path, signal)
+    let result: Listing
+    try {
+      result = await list(tree.sessionId, path, signal)
+    } catch (error) {
+      if (signal.aborted) return
+      result = { ok: false, error: { message: error instanceof Error ? error.message : String(error) } }
+    }
     if (signal.aborted) return
     const current = state.getSnapshot()[id]!
     put(id, { ...current, levels: { ...current.levels, [path]: { loading: false, result } } })
