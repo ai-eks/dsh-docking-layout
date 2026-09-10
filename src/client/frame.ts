@@ -230,6 +230,7 @@ body[data-dsh-docking-frame] [data-dsh-docking-frame-rightbar],
 body[data-dsh-docking-frame] [data-shell-overlay],
 body[data-dsh-docking-frame] [data-dsh-panel-host],
 body[data-dsh-docking-frame] [data-side='sidebar'],
+body[data-dsh-docking-frame] [data-sidebar-right-expand],
 body[data-dsh-docking-frame] [data-side='rightbar'] {
   display: none !important;
 }

@@ -76,7 +76,7 @@ export function apply(ctx: ClientContext): void {
   }
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'docking-layout: dictionaries')
-  installSharedPreview(ctx)
+  const preview = installSharedPreview(ctx)
   const store = createDockingLayoutStore()
   ctx.effect(() => {
     let pendingNavigation: SessionId | undefined
@@ -130,6 +130,7 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     store,
     inject: () => ({
+      preview,
       startSession: (onStarted: (sessionId: SessionId | undefined) => void) => {
         const sessions = ctx.sessions.list.getSnapshot()
         const workspaces = ctx.workspaces.list.getSnapshot()

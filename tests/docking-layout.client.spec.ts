@@ -29,6 +29,7 @@ import {
   resolveDropZone, splitTab, type SessionLayoutNode,
 } from '../src/client/layout.ts'
 import { zh } from '../src/client/locales.ts'
+import { createPreviewBridge } from '../src/client/preview.tsx'
 import { createDockingLayoutStore } from '../src/client/stores.ts'
 
 const sid = (value: string): SessionId => value as SessionId
@@ -202,6 +203,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }
@@ -235,6 +237,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -274,6 +277,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -355,6 +359,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -391,6 +396,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -436,6 +442,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     })))
@@ -489,6 +496,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -524,6 +532,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -595,6 +604,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession,
       t: makeTranslate(zh),
     }))
@@ -649,6 +659,7 @@ describe('DockingLayout', () => {
       useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession,
       t: makeTranslate(zh),
     }))
@@ -718,6 +729,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession,
       t: makeTranslate(zh),
     }))
@@ -758,6 +770,7 @@ describe('DockingLayout', () => {
       )) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession,
       t: makeTranslate(zh),
     }))
@@ -814,6 +827,7 @@ describe('DockingLayout', () => {
       )) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -848,6 +862,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -899,6 +914,7 @@ describe('DockingLayout', () => {
       useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -1004,6 +1020,7 @@ describe('DockingLayout', () => {
       )) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -1048,6 +1065,7 @@ describe('DockingLayout', () => {
       )) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -1086,6 +1104,7 @@ describe('DockingLayout', () => {
       useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -1115,6 +1134,7 @@ describe('DockingLayout', () => {
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(archivedWorkspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -1137,6 +1157,7 @@ describe('DockingLayout', () => {
       })) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -1167,6 +1188,7 @@ describe('DockingLayout', () => {
       )) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))
@@ -1219,6 +1241,7 @@ describe('DockingLayout', () => {
       )) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
+      preview: createPreviewBridge(),
       startSession: vi.fn(),
       t: makeTranslate(zh),
     }))

@@ -12,6 +12,7 @@ import {
   StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { createDockingLayoutStore } from './stores.ts'
+import { PreviewToggle, type PreviewBridge } from './preview.tsx'
 import {
   activateTab, closeTab, collectGroups, collectSessionIds, moveTab, openTab,
   reconcileSessionLayout, replaceTab, resolveDropZone, sameLayout, splitTab, type DropZone,
@@ -34,6 +35,7 @@ export type DockingLayoutProps =
   & PropsStore<ReturnType<typeof createDockingLayoutStore>>
   & PropsLocale<'docking-layout'>
   & { startSession: (onStarted: (sessionId: SessionId | undefined) => void) => void }
+  & { preview: PreviewBridge }
 
 /** Props for the root-scoped sidebar footer affordance. */
 export type DockingLayoutFooterActionProps =
@@ -222,7 +224,7 @@ export function DockingLayoutFooterAction({
  * @returns the current single-pane or tabbed workbench layout.
  */
 export function DockingLayout({
-  useSessions, usePanelInfo, useStore, actions, useWorkspaces, startSession, t,
+  useSessions, usePanelInfo, useStore, actions, useWorkspaces, startSession, preview, t,
 }: DockingLayoutProps): ReactNode {
   const sessions = useSessions(state => state)
   const activePanelId = usePanelInfo(state => state.activePanelId)
@@ -670,6 +672,7 @@ export function DockingLayout({
             >
               <IconChevronDownOutline14 />
             </button>
+            <PreviewToggle bridge={preview} t={t} />
           </div>
         </div>
 

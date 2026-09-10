@@ -1,5 +1,5 @@
 /** One persistent native right Sidebar, independent of conversation selection. */
-import { useCallback, useLayoutEffect, useMemo, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -116,7 +116,7 @@ export function createPreviewBridge() {
   }
 }
 
-type PreviewBridge = ReturnType<typeof createPreviewBridge>
+export type PreviewBridge = ReturnType<typeof createPreviewBridge>
 type PreviewInjected = {
   hooks: { preview: PreviewBridge['state'] }
   bridge: PreviewBridge
@@ -124,6 +124,20 @@ type PreviewInjected = {
 }
 
 export type PreviewProps = PropsRuntime<'rightbar'> & PropsLocale<'docking-layout'> & InjectFace<PreviewInjected>
+
+/** Reflect the shared preview state in the outer tab bar. */
+export function PreviewToggle({ bridge, t }: { bridge: PreviewBridge; t: PreviewProps['t'] }): ReactNode {
+  const state = useSyncExternalStore(bridge.state.subscribe, bridge.state.getSnapshot)
+  const label = t(state.expanded ? 'preview.hideSidebar' : 'preview.showSidebar')
+  return <button type="button" data-docking-preview-toggle="" title={label} aria-label={label}
+    aria-pressed={state.expanded} disabled={state.sessionId === undefined}
+    onClick={() => { if (state.expanded) bridge.close(); else bridge.show({ action: 'show' }) }}>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" />
+      <path d="M10 2v12" stroke="currentColor" />
+    </svg>
+  </button>
+}
 
 /** The iframe stays mounted on close, fullscreen, main-panel and Session switches. */
 export function SharedPreview({ usePreview, bridge, syncPresentation, width, viewportWidth, canShow, t }: PreviewProps): ReactNode {
@@ -175,7 +189,7 @@ export function SharedPreview({ usePreview, bridge, syncPresentation, width, vie
 }
 
 /** Replace only the outer rightbar seat; its native implementation lives in the fixed iframe. */
-export function installSharedPreview(ctx: Context): void {
+export function installSharedPreview(ctx: Context): PreviewBridge {
   const bridge = createPreviewBridge()
   ctx.effect(() => {
     const select = (): void => { bridge.selectSession(ctx.sessions.list.getSnapshot().current) }
@@ -199,6 +213,7 @@ export function installSharedPreview(ctx: Context): void {
       },
     }),
   }, SharedPreview))
+  return bridge
 }
 
 /** Mount the native Sidebar once, with one fixed Session as its lifetime owner. */

@@ -8,7 +8,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ISidebarRight } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import {
   createPreviewBridge, forwardPreview, installPreviewFrame, PREVIEW_MESSAGE,
-  previewCommand, SharedPreview, type PreviewProps,
+  previewCommand, PreviewToggle, SharedPreview, type PreviewProps,
 } from '../src/client/preview.tsx'
 
 const S1 = 'session-1' as SessionId
@@ -38,17 +38,24 @@ describe('shared preview', () => {
         useSyncExternalStore(bridge.state.subscribe, () => selector(bridge.state.getSnapshot())),
     } as unknown as PreviewProps
     const view = render(createElement(SharedPreview, props))
+    const toolbar = render(createElement(PreviewToggle, { bridge, t: props.t }))
     const frame = view.container.querySelector('iframe')!
     const src = frame.src
     expect(view.container.querySelector('aside')!.hidden).toBe(true)
-    act(() => { bridge.show({ action: 'show' }) })
+    fireEvent.click(toolbar.getByRole('button', { name: 'preview.showSidebar' }))
     expect(syncPresentation).toHaveBeenLastCalledWith(true, false, true)
+    expect(toolbar.getByRole('button', { name: 'preview.hideSidebar' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(toolbar.getByRole('button', { name: 'preview.hideSidebar' }))
+    expect(view.container.querySelector('aside')!.hidden).toBe(true)
+    expect(frame.isConnected).toBe(true)
+    fireEvent.click(toolbar.getByRole('button', { name: 'preview.showSidebar' }))
     window.history.replaceState({}, '', '/?unrelated=navigation')
     act(() => { bridge.selectSession(S2); bridge.selectSession(undefined) })
     expect(bridge.state.getSnapshot().sessionId).toBe(S1)
     fireEvent.click(view.getByRole('button', { name: 'preview.fullscreen' }))
     expect(syncPresentation).toHaveBeenLastCalledWith(true, true, true)
     fireEvent.click(view.getByRole('button', { name: 'preview.close' }))
+    expect(toolbar.getByRole('button', { name: 'preview.showSidebar' }).getAttribute('aria-pressed')).toBe('false')
     expect(frame.isConnected).toBe(true)
     act(() => { bridge.show({ action: 'show' }) })
     view.rerender(createElement(SharedPreview, { ...props, viewportWidth: 600 }))
