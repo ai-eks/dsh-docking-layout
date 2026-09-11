@@ -207,7 +207,8 @@ body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
   opacity: 0.35;
 }
 
-.group:not([data-docking-layout-top-right]) [data-docking-preview-toggle] {
+.group:not([data-docking-layout-top-right]) [data-docking-preview-toggle],
+.group:not([data-docking-layout-top-right]) [data-docking-bottom-toggle] {
   display: none;
 }
 
@@ -403,7 +404,8 @@ body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
     width: 26px;
   }
 
-  .group[data-active] [data-docking-preview-toggle] {
+  .group[data-active] [data-docking-preview-toggle],
+  .group[data-active] [data-docking-bottom-toggle] {
     display: grid;
   }
 

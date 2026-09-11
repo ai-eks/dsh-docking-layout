@@ -9,7 +9,9 @@ import {
 } from './frame.ts'
 import { createDockingLayoutStore } from './stores.ts'
 import { en, zh, type DockingLayoutKey } from './locales.ts'
-import { forwardPreview, installPreviewFrame, installSharedPreview, PREVIEW_MESSAGE, PREVIEW_SESSION_PARAM } from './preview.tsx'
+import { forwardPreview, installPreviewFrame, installSharedPreview, PREVIEW_MESSAGE, PREVIEW_SESSION_PARAM, BOTTOM_MESSAGE, BOTTOM_SESSION_PARAM } from './preview.tsx'
+import { suspendEmbeddedHmr } from './embedded-hmr.ts'
+import { installBottomClient, installBottomProxy, installSharedBottom } from './bottom.tsx'
 import { installWorkspaceFiles } from './workspace-files.tsx'
 
 /** Retain client service augmentations in published declarations. */
@@ -53,6 +55,14 @@ export const inject = ['slots', 'sessions', 'workspaces', 'uiWorkspace', 'locale
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
+  if (window.parent !== window && [PREVIEW_SESSION_PARAM, BOTTOM_SESSION_PARAM, 'dsh-docking-session']
+    .some(key => new URL(window.location.href).searchParams.has(key))) suspendEmbeddedHmr(ctx)
+  const bottomSession = window.parent !== window
+    ? new URL(window.location.href).searchParams.get(BOTTOM_SESSION_PARAM) : null
+  if (bottomSession) {
+    installBottomClient(ctx, bottomSession as SessionId)
+    return
+  }
   const previewSession = window.parent !== window
     ? new URL(window.location.href).searchParams.get(PREVIEW_SESSION_PARAM)
     : null
@@ -64,6 +74,11 @@ export function apply(ctx: ClientContext): void {
   }
   const addressedSession = frameSessionId()
   if (addressedSession !== undefined) {
+    ctx.inject(['betterSidebar' as never], scope => {
+      scope.effect(() => installBottomProxy(() => {
+        window.parent.postMessage({ type: BOTTOM_MESSAGE, action: 'show' }, window.location.origin)
+      }), 'docking-layout: embedded bottom proxy')
+    })
     ctx.effect(installFramePresentation, 'docking-layout: embedded frame presentation')
     ctx.effect(
       () => followFrameSession(ctx.sessions, addressedSession),
@@ -77,6 +92,7 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'docking-layout: dictionaries')
   const preview = installSharedPreview(ctx)
+  const bottom = installSharedBottom(ctx)
   const store = createDockingLayoutStore()
   ctx.effect(() => {
     let pendingNavigation: SessionId | undefined
@@ -130,7 +146,7 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     store,
     inject: () => ({
-      preview,
+      preview, bottom,
       startSession: (onStarted: (sessionId: SessionId | undefined) => void) => {
         const sessions = ctx.sessions.list.getSnapshot()
         const workspaces = ctx.workspaces.list.getSnapshot()

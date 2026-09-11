@@ -76,3 +76,32 @@
 }
 
 .status { padding: 4px 12px; font-size: 12px; overflow-wrap: anywhere; }
+
+.toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.toggle:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.toggle[aria-pressed='true'] { color: var(--dsw-alias-label-primary); }
+
+.resize {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  z-index: 1;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.resize:hover, .resize:focus-visible { background: var(--dsw-alias-state-business-primary); }

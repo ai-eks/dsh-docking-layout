@@ -1303,6 +1303,7 @@ describe('plugin wiring', () => {
     const disposers: Array<() => void> = []
     const entries = new Map<string, { options: Record<string, unknown>; component: unknown }>()
     const ctx = {
+      inject: vi.fn(),
       effect: (install: () => () => void) => { disposers.push(install()) },
       locale: { register: vi.fn(() => disposeLocale) },
       sessions: {

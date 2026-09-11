@@ -35,7 +35,7 @@ export type DockingLayoutProps =
   & PropsStore<ReturnType<typeof createDockingLayoutStore>>
   & PropsLocale<'docking-layout'>
   & { startSession: (onStarted: (sessionId: SessionId | undefined) => void) => void }
-  & { preview: PreviewBridge }
+  & { preview: PreviewBridge; bottom?: PreviewBridge }
 
 /** Props for the root-scoped sidebar footer affordance. */
 export type DockingLayoutFooterActionProps =
@@ -145,7 +145,7 @@ function LayoutIcon({ docked, size = 14 }: { docked: boolean; size?: number }): 
 }
 
 /** Track the stock conversation column after native and external panel concessions. */
-function useConversationSurface(): CSSProperties {
+export function useConversationSurface(): CSSProperties {
   const [bounds, setBounds] = useState<SurfaceBounds>()
   useEffect(() => {
     let observed: Element | undefined
@@ -224,7 +224,7 @@ export function DockingLayoutFooterAction({
  * @returns the current single-pane or tabbed workbench layout.
  */
 export function DockingLayout({
-  useSessions, usePanelInfo, useStore, actions, useWorkspaces, startSession, preview, t,
+  useSessions, usePanelInfo, useStore, actions, useWorkspaces, startSession, preview, bottom, t,
 }: DockingLayoutProps): ReactNode {
   const sessions = useSessions(state => state)
   const activePanelId = usePanelInfo(state => state.activePanelId)
@@ -672,6 +672,7 @@ export function DockingLayout({
             >
               <IconChevronDownOutline14 />
             </button>
+            {bottom !== undefined && <PreviewToggle bridge={bottom} t={t} panel="bottom" />}
             <PreviewToggle bridge={preview} t={t} />
           </div>
         </div>

@@ -1,5 +1,5 @@
 /** Persistent workspace sidebars, independent of conversation selection. */
-import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -13,6 +13,8 @@ import css from './Preview.module.css'
 
 export const PREVIEW_SESSION_PARAM = 'dsh-docking-preview'
 export const PREVIEW_MESSAGE = 'dsh-docking-layout:preview'
+export const BOTTOM_MESSAGE = 'dsh-docking-layout:bottom'
+export const BOTTOM_SESSION_PARAM = 'dsh-docking-bottom'
 
 export type PreviewCommand =
   | { action: 'resource'; address: string; options?: SidebarRightOpenResourceOptions }
@@ -20,6 +22,7 @@ export type PreviewCommand =
   | { action: 'show' }
 
 interface PreviewState {
+  available: boolean
   sessionId: SessionId | undefined
   sessionIds: SessionId[]
   pendingWorkspace: WorkspaceId | undefined
@@ -29,10 +32,10 @@ interface PreviewState {
 }
 
 /** Validate messages before dispatching them to the native Sidebar service. */
-export function previewCommand(event: MessageEvent<unknown>): PreviewCommand | undefined {
+export function previewCommand(event: MessageEvent<unknown>, protocol = PREVIEW_MESSAGE): PreviewCommand | undefined {
   if (event.origin !== window.location.origin || typeof event.data !== 'object' || event.data === null) return
   const data = event.data as Record<string, unknown>
-  if (data.type !== PREVIEW_MESSAGE) return
+  if (data.type !== protocol) return
   if (data.action === 'show') return { action: 'show' }
   if (data.options !== undefined && (typeof data.options !== 'object' || data.options === null || Array.isArray(data.options))) return
   if (data.action === 'resource' && typeof data.address === 'string' && data.address.startsWith('dsh-resource://')) {
@@ -70,8 +73,8 @@ export function forwardPreview(sidebar: ISidebarRight, send: (command: PreviewCo
 }
 
 /** Retain each visited workspace's native tabs and queue commands for its frame. */
-export function createPreviewBridge() {
-  const state = createSnapshotStore<PreviewState>({ sessionId: undefined, sessionIds: [], pendingWorkspace: undefined, error: undefined, expanded: false, fullscreen: false })
+export function createPreviewBridge(protocol = PREVIEW_MESSAGE, available = true) {
+  const state = createSnapshotStore<PreviewState>({ available, sessionId: undefined, sessionIds: [], pendingWorkspace: undefined, error: undefined, expanded: false, fullscreen: false })
   const channels = new Map<SessionId, { frame: Window | null; ready: boolean; pending: PreviewCommand[] }>()
   let selection = 0
   const channelFor = (id: SessionId) => {
@@ -84,7 +87,7 @@ export function createPreviewBridge() {
   }
   const flush = (channel: ReturnType<typeof channelFor>): void => {
     if (!channel.ready || channel.frame === null) return
-    for (const command of channel.pending.splice(0)) channel.frame.postMessage({ type: PREVIEW_MESSAGE, ...command }, window.location.origin)
+    for (const command of channel.pending.splice(0)) channel.frame.postMessage({ type: protocol, ...command }, window.location.origin)
   }
   const activate = (sessionId: SessionId): void => {
     const current = state.getSnapshot()
@@ -101,6 +104,10 @@ export function createPreviewBridge() {
   }
   return {
     state,
+    setAvailable(value: boolean) {
+      if (!value) selection++
+      state.set({ ...state.getSnapshot(), available: value, ...value ? {} : { expanded: false } })
+    },
     selectSession(sessionId: SessionId | undefined) {
       if (state.getSnapshot().sessionId === undefined && sessionId !== undefined) activate(sessionId)
     },
@@ -130,7 +137,7 @@ export function createPreviewBridge() {
         if (channel.frame === null || event.source !== channel.frame) continue
         if (typeof event.data !== 'object' || event.data === null) return
         const data = event.data as Record<string, unknown>
-        if (data.type !== PREVIEW_MESSAGE) return
+        if (data.type !== protocol) return
         if (data.action === 'ready') {
           channel.ready = true
           flush(channel)
@@ -139,8 +146,10 @@ export function createPreviewBridge() {
         }
         return
       }
-      if (!isMountedFrameMessage(event)) return
-      const command = previewCommand(event)
+      const fromBottom = protocol === PREVIEW_MESSAGE && Array.from(document.querySelectorAll<HTMLIFrameElement>('iframe[data-docking-bottom-frame]'))
+        .some(frame => frame.contentWindow === event.source)
+      if (!isMountedFrameMessage(event) && !fromBottom) return
+      const command = previewCommand(event, protocol)
       if (command !== undefined) show(command)
     },
     show,
@@ -151,7 +160,7 @@ export function createPreviewBridge() {
 }
 
 export type PreviewBridge = ReturnType<typeof createPreviewBridge>
-type PreviewInjected = {
+export type PreviewInjected = {
   hooks: { preview: PreviewBridge['state'] }
   bridge: PreviewBridge
   connectWorkspace: (id: WorkspaceId) => Promise<SessionId>
@@ -161,22 +170,24 @@ type PreviewInjected = {
 export type PreviewProps = PropsRuntime<'rightbar'> & PropsLocale<'docking-layout'> & InjectFace<PreviewInjected>
 
 /** Reflect the shared preview state in the outer tab bar. */
-export function PreviewToggle({ bridge, t }: { bridge: PreviewBridge; t: PreviewProps['t'] }): ReactNode {
+export function PreviewToggle({ bridge, t, panel = 'preview' }: { bridge: PreviewBridge; t: PreviewProps['t']; panel?: 'preview' | 'bottom' }): ReactNode {
   const state = useSyncExternalStore(bridge.state.subscribe, bridge.state.getSnapshot)
-  const label = t(state.expanded ? 'preview.hideSidebar' : 'preview.showSidebar')
-  return <button type="button" data-docking-preview-toggle="" title={label} aria-label={label}
+  if (!state.available) return null
+  const label = t(state.expanded ? `${panel}.hideSidebar` : `${panel}.showSidebar`)
+  return <button type="button" className={css.toggle} data-docking-preview-toggle={panel === 'preview' ? '' : undefined}
+    data-docking-bottom-toggle={panel === 'bottom' ? '' : undefined} title={label} aria-label={label}
     aria-pressed={state.expanded} disabled={state.sessionId === undefined}
     onClick={() => { if (state.expanded) bridge.close(); else bridge.show({ action: 'show' }) }}>
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" />
-      <path d="M10 2v12" stroke="currentColor" />
+      <path d={panel === 'bottom' ? 'M2 10h12' : 'M10 2v12'} stroke="currentColor" />
     </svg>
   </button>
 }
 
 /** Stable refs and URLs keep hidden workspaces' editors and terminals alive. */
-function PreviewFrame({ bridge, sessionId, active, title }: {
-  bridge: PreviewBridge; sessionId: SessionId; active: boolean; title: string
+function PreviewFrame({ bridge, sessionId, active, title, panel }: {
+  bridge: PreviewBridge; sessionId: SessionId; active: boolean; title: string; panel: 'preview' | 'bottom'
 }): ReactNode {
   const bindFrame = useCallback((element: HTMLIFrameElement | null) => {
     bridge.bindFrame(sessionId, element?.contentWindow ?? null)
@@ -184,68 +195,75 @@ function PreviewFrame({ bridge, sessionId, active, title }: {
   const src = useMemo(() => {
     const url = new URL(window.location.href)
     url.searchParams.delete('dsh-docking-session')
-    url.searchParams.set(PREVIEW_SESSION_PARAM, sessionId)
+    url.searchParams.delete(PREVIEW_SESSION_PARAM)
+    url.searchParams.delete(BOTTOM_SESSION_PARAM)
+    url.searchParams.set(panel === 'bottom' ? BOTTOM_SESSION_PARAM : PREVIEW_SESSION_PARAM, sessionId)
     return url.toString()
-  }, [sessionId])
+  }, [sessionId, panel])
   return <iframe ref={bindFrame} src={src} title={title} className={css.frame}
-    data-docking-preview-frame={sessionId} hidden={!active} />
+    data-docking-preview-frame={panel === 'preview' ? sessionId : undefined}
+    data-docking-bottom-frame={panel === 'bottom' ? sessionId : undefined} hidden={!active} />
 }
 
 /** Manual workspace selection is independent of the active conversation. */
-export function SharedPreview({ usePreview, useWorkspaces, bridge, connectWorkspace, syncPresentation, width, viewportWidth, canShow, t }: PreviewProps): ReactNode {
+export function SharedPreview({ usePreview, useWorkspaces, bridge, connectWorkspace, syncPresentation, width, viewportWidth, canShow, t, panel = 'preview', surfaceStyle, resizeHandle }: PreviewProps & {
+  panel?: 'preview' | 'bottom'; surfaceStyle?: CSSProperties; resizeHandle?: ReactNode
+}): ReactNode {
   const state = usePreview(value => value)
   const workspaces = useWorkspaces(value => value.items)
   const workspace = workspaces.find(item => state.sessionId !== undefined && item.sessionIds.includes(state.sessionId))
   const fullscreen = state.fullscreen || viewportWidth < 768 || !canShow
-  const expanded = state.expanded && state.sessionId !== undefined
+  const expanded = state.available && state.expanded && state.sessionId !== undefined
   useLayoutEffect(() => {
     syncPresentation(expanded, fullscreen, viewportWidth >= 768 && canShow)
   }, [canShow, expanded, fullscreen, syncPresentation, viewportWidth])
   useLayoutEffect(() => () => { syncPresentation(false, false, false) }, [syncPresentation])
-  if (state.sessionId === undefined) return null
+  if (!state.available || state.sessionId === undefined) return null
   return (
     <aside
       className={css.root}
-      data-docking-shared-preview=""
+      data-docking-shared-preview={panel === 'preview' ? '' : undefined}
+      data-docking-shared-bottom={panel === 'bottom' ? '' : undefined}
       data-fullscreen={fullscreen || undefined}
       hidden={!expanded}
-      style={{ width: fullscreen ? '100%' : width }}
-      aria-label={t('preview.title')}
+      style={{ width: fullscreen ? '100%' : width, ...fullscreen ? {} : surfaceStyle }}
+      aria-label={t(`${panel}.title`)}
     >
+      {!fullscreen && resizeHandle}
       <div className={css.toolbar}>
         <label className={css.workspace}>
-          <span>{t('preview.workspace')}</span>
-          <select aria-label={t('preview.workspace')} title={workspace?.path}
+          <span>{t(`${panel}.workspace`)}</span>
+          <select aria-label={t(`${panel}.workspace`)} title={workspace?.path}
             value={workspace?.workspaceId ?? ''} disabled={state.pendingWorkspace !== undefined}
             onChange={event => {
               const next = workspaces.find(item => item.workspaceId === event.target.value)
               if (next !== undefined) void bridge.chooseWorkspace(next, connectWorkspace)
             }}>
-            {workspace === undefined && <option value="">{t('preview.chooseWorkspace')}</option>}
+            {workspace === undefined && <option value="">{t(`${panel}.chooseWorkspace`)}</option>}
             {workspaces.map(item => <option key={item.workspaceId} value={item.workspaceId}>{item.title}</option>)}
           </select>
         </label>
         <div className={css.actions}>
-          <button type="button" title={t(fullscreen ? 'preview.restore' : 'preview.fullscreen')}
-            aria-label={t(fullscreen ? 'preview.restore' : 'preview.fullscreen')}
+          <button type="button" title={t(fullscreen ? `${panel}.restore` : `${panel}.fullscreen`)}
+            aria-label={t(fullscreen ? `${panel}.restore` : `${panel}.fullscreen`)}
             onClick={() => { if (viewportWidth < 768 || !canShow) bridge.close(); else bridge.toggleFullscreen() }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d={fullscreen ? 'M6 1v5H1m14 4h-5v5' : 'M1 6V1h5m4 14h5v-5'} stroke="currentColor" strokeWidth="1.4" />
             </svg>
           </button>
-          <button type="button" title={t('preview.close')} aria-label={t('preview.close')} onClick={bridge.close}>
+          <button type="button" title={t(`${panel}.close`)} aria-label={t(`${panel}.close`)} onClick={bridge.close}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" />
-              <path d="M10 2v12" stroke="currentColor" />
+              <path d={panel === 'bottom' ? 'M2 10h12' : 'M10 2v12'} stroke="currentColor" />
             </svg>
           </button>
         </div>
       </div>
-      {state.pendingWorkspace !== undefined && <div className={css.status} role="status">{t('preview.connecting')}</div>}
-      {state.error !== undefined && <div className={css.status} role="alert">{t('preview.connectFailed')}: {state.error}</div>}
+      {state.pendingWorkspace !== undefined && <div className={css.status} role="status">{t(`${panel}.connecting`)}</div>}
+      {state.error !== undefined && <div className={css.status} role="alert">{t(`${panel}.connectFailed`)}: {state.error}</div>}
       <div className={css.content}>
         {state.sessionIds.map(id => <PreviewFrame key={id} bridge={bridge} sessionId={id}
-          active={state.sessionId === id} title={t('preview.title')} />)}
+          active={state.sessionId === id} panel={panel} title={t(`${panel}.title`)} />)}
       </div>
     </aside>
   )

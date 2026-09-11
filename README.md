@@ -53,9 +53,11 @@ Enable Docking Layout from the DSH sidebar footer. Open Sessions from the group 
 
 ## Performance and limitations
 
-The iframe pool keeps every group's active tab plus the two most recently used inactive tabs mounted. Revisiting an evicted tab reloads its embedded client. The shared preview lazily keeps one additional iframe mounted per workspace visited through its selector, preserving each workspace's native tabs until page reload. More groups therefore use more browser memory and DSH Web connections.
+The iframe pool keeps every group's active tab plus the two most recently used inactive tabs mounted. Revisiting an evicted tab reloads its embedded client. Each shared panel keeps an iframe per workspace visited through its selector, preserving that workspace's native tabs until page reload. More groups and workspaces therefore use more browser memory and DSH Web connections.
 
-A shared right sidebar keeps native file-preview tabs open independently of Session and group selection. File links from any conversation open in that same sidebar; collapsing it preserves its contents. The Files tab lists every Workspace as an independent root, loaded on expansion, so multiple projects can be browsed together. Session switches leave the file tree and open previews unchanged. File-tree and preview state last for the current page and are reset on reload. The right-sidebar workspace selector explicitly chooses the owner for session-scoped tools such as terminals and Git; changing the active conversation leaves this selection unchanged. Switching the selector restores that workspace's native tabs. Conversation bottom panels remain scoped to their own Session. Archived Sessions and subagent routes use the native conversation view. Touch layouts use split buttons and the group switcher instead of tab dragging.
+A shared right sidebar keeps native file-preview tabs open independently of Session and group selection. File links from any conversation open in that same sidebar; collapsing it preserves its contents. The Files tab lists every Workspace as an independent root, loaded on expansion, so multiple projects can be browsed together. Session switches leave the file tree and open previews unchanged. File-tree and preview state last for the current page and are reset on reload. The right-sidebar workspace selector explicitly chooses the owner for session-scoped tools such as terminals and Git; changing the active conversation leaves this selection unchanged. Switching the selector restores that workspace's native tabs. Archived Sessions and subagent routes use the native conversation view. Touch layouts use split buttons and the group switcher instead of tab dragging.
+
+With `dsh-better-sidebar` installed, a shared bottom workbench spans the conversation area below all groups. Its workspace selector is independent of both the right sidebar and the active conversation. Switching workspaces or collapsing the panel keeps its terminals and tabs mounted. Open it from the bottom-panel button beside the right-sidebar button in the outer tab bar; drag its top edge to resize, or focus the separator and use the arrow keys. Fullscreen and single-column mode retain the same workspace ownership. The panel is available only while the companion plugin is enabled.
 
 Only layout preferences are stored locally. The plugin does not copy Session logs, prompts, approvals, or files, and all embedded pages are same-origin. It adds no model-visible prompts, tools, messages, or Session events.
 
@@ -63,9 +65,11 @@ Only layout preferences are stored locally. The plugin does not copy Session log
 
 Requires DeepSeek Harness `^0.1.5-rc.1` and Cordis `^4.0.2`. This version uses the main-panel navigation and layout contracts introduced in DSH 0.1.5. For DSH 0.1.2, use plugin `0.1.2-rc.1`.
 
-Tested with `dsh-better-sidebar@0.19.0`: the shared Files tab retains multiple workspace roots, right-sidebar terminals and Git use the explicitly selected workspace, and the bottom workbench remains available inside each conversation.
+Tested with `dsh-better-sidebar@0.19.0`: multi-root Files, independent right and bottom workspace selection, retained terminal processes, bottom resizing/fullscreen, and single-column mode.
 
 ## Development
+
+Only the outer page keeps the development hot-reload connection, preventing embedded clients from exhausting HTTP/1 connections. Refresh the page to apply changes to plugins used inside embedded clients.
 
 ```sh
 pnpm install
