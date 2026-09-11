@@ -1533,7 +1533,17 @@ describe('plugin wiring', () => {
     expect(frameSessionId(`http://localhost/?dsh-docking-session=${S1}`, true)).toBe(S1)
     const postFrameMessage = vi.fn()
     const stopFollowing = followFrameSession(sessionService as never, S1, postFrameMessage)
+    const panelHost = document.createElement('div')
+    panelHost.dataset.dshPanelHost = ''
+    document.body.append(panelHost)
+    const workbenchStyle = document.createElement('style')
+    workbenchStyle.textContent = '[data-dsh-center-col] { margin-bottom: 240px; }'
+    document.head.append(workbenchStyle)
+    conversationParent.setAttribute('data-dsh-center-col', '')
     const removePresentation = installFramePresentation(postFrameMessage)
+    expect(getComputedStyle(panelHost).display).not.toBe('none')
+    expect(getComputedStyle(conversationParent).marginBottom).toBe('240px')
+    workbenchStyle.remove()
     expect(open).toHaveBeenCalledWith(S1)
     expect(postFrameMessage).toHaveBeenCalledWith({
       type: FRAME_READY_MESSAGE,

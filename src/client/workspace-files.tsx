@@ -181,8 +181,10 @@ export function installWorkspaceFiles(ctx: Context): void {
   const files = createWorkspaceFiles(id => ctx.uiWorkspace.connectWorkspace(id),
     (id, path, signal) => ctx.remote.workspaceFiles.list(id, path, signal))
   ctx.effect(() => () => { files.dispose() }, 'docking-layout: workspace file requests')
-  ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
-    name: 'sidebar.right.pane.tab', key: '@deepseek-ai/dsh-client-ui-sidebar-files', priority: -10,
-    locale: 'docking-layout', inject: (): Injected => ({ files, hooks: { trees: files.state } }),
-  }, WorkspaceFiles))
+  for (const key of ['@deepseek-ai/dsh-client-ui-sidebar-files', 'dsh-better-sidebar:files']) {
+    ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+      name: 'sidebar.right.pane.tab', key, priority: -10,
+      locale: 'docking-layout', inject: (): Injected => ({ files, hooks: { trees: files.state } }),
+    }, WorkspaceFiles))
+  }
 }

@@ -228,7 +228,6 @@ body[data-dsh-docking-frame] [data-dsh-docking-frame-shell] {
 body[data-dsh-docking-frame] [data-dsh-docking-frame-sidebar],
 body[data-dsh-docking-frame] [data-dsh-docking-frame-rightbar],
 body[data-dsh-docking-frame] [data-shell-overlay],
-body[data-dsh-docking-frame] [data-dsh-panel-host],
 body[data-dsh-docking-frame] [data-side='sidebar'],
 body[data-dsh-docking-frame] [data-sidebar-right-expand],
 body[data-dsh-docking-frame] [data-side='rightbar'] {
@@ -237,7 +236,6 @@ body[data-dsh-docking-frame] [data-side='rightbar'] {
 body[data-dsh-docking-frame] [data-dsh-docking-frame-conversation] {
   grid-column: 2 !important;
   grid-row: 1 !important;
-  margin-bottom: 0 !important;
 }
 `
 

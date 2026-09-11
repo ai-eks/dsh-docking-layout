@@ -1,4 +1,4 @@
-/** One persistent native right Sidebar, independent of conversation selection. */
+/** Persistent workspace sidebars, independent of conversation selection. */
 import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -6,6 +6,7 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type {
   ISidebarRight, SidebarRightOpenResourceOptions, SidebarRightOpenTabOptions,
 } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { followFrameSession, installFramePresentation, isMountedFrameMessage } from './frame.ts'
 import css from './Preview.module.css'
@@ -20,6 +21,9 @@ export type PreviewCommand =
 
 interface PreviewState {
   sessionId: SessionId | undefined
+  sessionIds: SessionId[]
+  pendingWorkspace: WorkspaceId | undefined
+  error: string | undefined
   expanded: boolean
   fullscreen: boolean
 }
@@ -65,43 +69,72 @@ export function forwardPreview(sidebar: ISidebarRight, send: (command: PreviewCo
   }
 }
 
-/** Keep the preview address stable and queue opens until its native client is ready. */
+/** Retain each visited workspace's native tabs and queue commands for its frame. */
 export function createPreviewBridge() {
-  const state = createSnapshotStore<PreviewState>({ sessionId: undefined, expanded: false, fullscreen: false })
-  let frame: Window | null = null
-  let ready = false
-  const pending: PreviewCommand[] = []
-  const flush = (): void => {
-    if (!ready || frame === null) return
-    for (const command of pending.splice(0)) frame.postMessage({ type: PREVIEW_MESSAGE, ...command }, window.location.origin)
+  const state = createSnapshotStore<PreviewState>({ sessionId: undefined, sessionIds: [], pendingWorkspace: undefined, error: undefined, expanded: false, fullscreen: false })
+  const channels = new Map<SessionId, { frame: Window | null; ready: boolean; pending: PreviewCommand[] }>()
+  let selection = 0
+  const channelFor = (id: SessionId) => {
+    let channel = channels.get(id)
+    if (channel === undefined) {
+      channel = { frame: null, ready: false, pending: [] }
+      channels.set(id, channel)
+    }
+    return channel
+  }
+  const flush = (channel: ReturnType<typeof channelFor>): void => {
+    if (!channel.ready || channel.frame === null) return
+    for (const command of channel.pending.splice(0)) channel.frame.postMessage({ type: PREVIEW_MESSAGE, ...command }, window.location.origin)
+  }
+  const activate = (sessionId: SessionId): void => {
+    const current = state.getSnapshot()
+    state.set({ ...current, sessionId, pendingWorkspace: undefined, error: undefined,
+      sessionIds: current.sessionIds.includes(sessionId) ? current.sessionIds : [...current.sessionIds, sessionId] })
   }
   const show = (command: PreviewCommand): void => {
-    state.set({ ...state.getSnapshot(), expanded: true })
-    pending.push(command)
-    flush()
+    const current = state.getSnapshot()
+    state.set({ ...current, expanded: true })
+    if (current.sessionId === undefined) return
+    const channel = channelFor(current.sessionId)
+    channel.pending.push(command)
+    flush(channel)
   }
   return {
     state,
     selectSession(sessionId: SessionId | undefined) {
-      if (state.getSnapshot().sessionId === undefined && sessionId !== undefined) {
-        state.set({ ...state.getSnapshot(), sessionId })
+      if (state.getSnapshot().sessionId === undefined && sessionId !== undefined) activate(sessionId)
+    },
+    async chooseWorkspace(workspace: WorkspaceView, connect: (id: WorkspaceId) => Promise<SessionId>) {
+      const request = ++selection
+      const current = state.getSnapshot()
+      state.set({ ...current, pendingWorkspace: workspace.workspaceId, error: undefined })
+      try {
+        const sessionId = current.sessionIds.find(id => workspace.sessionIds.includes(id))
+          ?? workspace.sessionIds[0] ?? await connect(workspace.workspaceId)
+        if (selection !== request) return
+        activate(sessionId)
+        show({ action: 'show' })
+      } catch (error) {
+        if (selection === request) state.set({ ...state.getSnapshot(), pendingWorkspace: undefined,
+          error: error instanceof Error ? error.message : String(error) })
       }
     },
-    bindFrame(next: Window | null) {
-      if (frame !== next) ready = false
-      frame = next
+    bindFrame(sessionId: SessionId, next: Window | null) {
+      const channel = channelFor(sessionId)
+      if (channel.frame !== next) channel.ready = false
+      channel.frame = next
     },
     receive(event: MessageEvent<unknown>) {
       if (event.origin !== window.location.origin) return
-      if (frame !== null && event.source === frame) {
-        if (typeof event.data === 'object' && event.data !== null
-          && (event.data as Record<string, unknown>).type === PREVIEW_MESSAGE
-          && (event.data as Record<string, unknown>).action === 'ready') {
-          ready = true
-          flush()
-        } else if (typeof event.data === 'object' && event.data !== null
-          && (event.data as Record<string, unknown>).type === PREVIEW_MESSAGE
-          && (event.data as Record<string, unknown>).action === 'collapsed') {
+      for (const [sessionId, channel] of channels) {
+        if (channel.frame === null || event.source !== channel.frame) continue
+        if (typeof event.data !== 'object' || event.data === null) return
+        const data = event.data as Record<string, unknown>
+        if (data.type !== PREVIEW_MESSAGE) return
+        if (data.action === 'ready') {
+          channel.ready = true
+          flush(channel)
+        } else if (data.action === 'collapsed' && state.getSnapshot().sessionId === sessionId) {
           state.set({ ...state.getSnapshot(), expanded: false })
         }
         return
@@ -113,6 +146,7 @@ export function createPreviewBridge() {
     show,
     close() { state.set({ ...state.getSnapshot(), expanded: false }) },
     toggleFullscreen() { state.set({ ...state.getSnapshot(), fullscreen: !state.getSnapshot().fullscreen }) },
+    dispose() { selection++; channels.clear() },
   }
 }
 
@@ -120,6 +154,7 @@ export type PreviewBridge = ReturnType<typeof createPreviewBridge>
 type PreviewInjected = {
   hooks: { preview: PreviewBridge['state'] }
   bridge: PreviewBridge
+  connectWorkspace: (id: WorkspaceId) => Promise<SessionId>
   syncPresentation: (expanded: boolean, fullscreen: boolean, track: boolean) => void
 }
 
@@ -139,25 +174,34 @@ export function PreviewToggle({ bridge, t }: { bridge: PreviewBridge; t: Preview
   </button>
 }
 
-/** The iframe stays mounted on close, fullscreen, main-panel and Session switches. */
-export function SharedPreview({ usePreview, bridge, syncPresentation, width, viewportWidth, canShow, t }: PreviewProps): ReactNode {
+/** Stable refs and URLs keep hidden workspaces' editors and terminals alive. */
+function PreviewFrame({ bridge, sessionId, active, title }: {
+  bridge: PreviewBridge; sessionId: SessionId; active: boolean; title: string
+}): ReactNode {
+  const bindFrame = useCallback((element: HTMLIFrameElement | null) => {
+    bridge.bindFrame(sessionId, element?.contentWindow ?? null)
+  }, [bridge, sessionId])
+  const src = useMemo(() => {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('dsh-docking-session')
+    url.searchParams.set(PREVIEW_SESSION_PARAM, sessionId)
+    return url.toString()
+  }, [sessionId])
+  return <iframe ref={bindFrame} src={src} title={title} className={css.frame}
+    data-docking-preview-frame={sessionId} hidden={!active} />
+}
+
+/** Manual workspace selection is independent of the active conversation. */
+export function SharedPreview({ usePreview, useWorkspaces, bridge, connectWorkspace, syncPresentation, width, viewportWidth, canShow, t }: PreviewProps): ReactNode {
   const state = usePreview(value => value)
+  const workspaces = useWorkspaces(value => value.items)
+  const workspace = workspaces.find(item => state.sessionId !== undefined && item.sessionIds.includes(state.sessionId))
   const fullscreen = state.fullscreen || viewportWidth < 768 || !canShow
   const expanded = state.expanded && state.sessionId !== undefined
   useLayoutEffect(() => {
     syncPresentation(expanded, fullscreen, viewportWidth >= 768 && canShow)
   }, [canShow, expanded, fullscreen, syncPresentation, viewportWidth])
   useLayoutEffect(() => () => { syncPresentation(false, false, false) }, [syncPresentation])
-  const bindFrame = useCallback((element: HTMLIFrameElement | null) => {
-    bridge.bindFrame(element?.contentWindow ?? null)
-  }, [bridge])
-  const src = useMemo(() => {
-    if (state.sessionId === undefined) return undefined
-    const url = new URL(window.location.href)
-    url.searchParams.delete('dsh-docking-session')
-    url.searchParams.set(PREVIEW_SESSION_PARAM, state.sessionId)
-    return url.toString()
-  }, [state.sessionId])
   if (state.sessionId === undefined) return null
   return (
     <aside
@@ -168,27 +212,46 @@ export function SharedPreview({ usePreview, bridge, syncPresentation, width, vie
       style={{ width: fullscreen ? '100%' : width }}
       aria-label={t('preview.title')}
     >
-      <iframe ref={bindFrame} src={src} title={t('preview.title')} className={css.frame} />
-      <div className={css.actions}>
-        <button type="button" title={t(fullscreen ? 'preview.restore' : 'preview.fullscreen')}
-          aria-label={t(fullscreen ? 'preview.restore' : 'preview.fullscreen')}
-          onClick={() => { if (viewportWidth < 768 || !canShow) bridge.close(); else bridge.toggleFullscreen() }}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d={fullscreen ? 'M6 1v5H1m14 4h-5v5' : 'M1 6V1h5m4 14h5v-5'} stroke="currentColor" strokeWidth="1.4" />
-          </svg>
-        </button>
-        <button type="button" title={t('preview.close')} aria-label={t('preview.close')} onClick={bridge.close}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" />
-            <path d="M10 2v12" stroke="currentColor" />
-          </svg>
-        </button>
+      <div className={css.toolbar}>
+        <label className={css.workspace}>
+          <span>{t('preview.workspace')}</span>
+          <select aria-label={t('preview.workspace')} title={workspace?.path}
+            value={workspace?.workspaceId ?? ''} disabled={state.pendingWorkspace !== undefined}
+            onChange={event => {
+              const next = workspaces.find(item => item.workspaceId === event.target.value)
+              if (next !== undefined) void bridge.chooseWorkspace(next, connectWorkspace)
+            }}>
+            {workspace === undefined && <option value="">{t('preview.chooseWorkspace')}</option>}
+            {workspaces.map(item => <option key={item.workspaceId} value={item.workspaceId}>{item.title}</option>)}
+          </select>
+        </label>
+        <div className={css.actions}>
+          <button type="button" title={t(fullscreen ? 'preview.restore' : 'preview.fullscreen')}
+            aria-label={t(fullscreen ? 'preview.restore' : 'preview.fullscreen')}
+            onClick={() => { if (viewportWidth < 768 || !canShow) bridge.close(); else bridge.toggleFullscreen() }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d={fullscreen ? 'M6 1v5H1m14 4h-5v5' : 'M1 6V1h5m4 14h5v-5'} stroke="currentColor" strokeWidth="1.4" />
+            </svg>
+          </button>
+          <button type="button" title={t('preview.close')} aria-label={t('preview.close')} onClick={bridge.close}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" />
+              <path d="M10 2v12" stroke="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      {state.pendingWorkspace !== undefined && <div className={css.status} role="status">{t('preview.connecting')}</div>}
+      {state.error !== undefined && <div className={css.status} role="alert">{t('preview.connectFailed')}: {state.error}</div>}
+      <div className={css.content}>
+        {state.sessionIds.map(id => <PreviewFrame key={id} bridge={bridge} sessionId={id}
+          active={state.sessionId === id} title={t('preview.title')} />)}
       </div>
     </aside>
   )
 }
 
-/** Replace only the outer rightbar seat; its native implementation lives in the fixed iframe. */
+/** Replace the outer rightbar seat; native implementations keep their fixed owners. */
 export function installSharedPreview(ctx: Context): PreviewBridge {
   const bridge = createPreviewBridge()
   ctx.effect(() => {
@@ -199,6 +262,7 @@ export function installSharedPreview(ctx: Context): PreviewBridge {
     const restore = forwardPreview(ctx.sidebarRight, bridge.show)
     return () => {
       restore()
+      bridge.dispose()
       unsubscribe()
       window.removeEventListener('message', bridge.receive)
     }
@@ -207,6 +271,7 @@ export function installSharedPreview(ctx: Context): PreviewBridge {
     name: 'rightbar', priority: -10, locale: 'docking-layout',
     inject: (): PreviewInjected => ({
       hooks: { preview: bridge.state }, bridge,
+      connectWorkspace: id => ctx.uiWorkspace.connectWorkspace(id),
       syncPresentation(expanded, fullscreen, track) {
         if (expanded) ctx.layout.openRightbar(track, fullscreen)
         else ctx.layout.closeRightbar()
@@ -224,6 +289,7 @@ export function installPreviewFrame(ctx: Context, sessionId: SessionId): () => v
   const style = document.createElement('style')
   style.textContent = `
 body[data-dsh-docking-preview] [data-dsh-docking-frame-shell] { grid-template-columns: 0 0 minmax(0, 1fr) !important; }
+body[data-dsh-docking-preview] [data-dsh-panel-host] { visibility: hidden !important; pointer-events: none !important; }
 body[data-dsh-docking-preview] [data-dsh-docking-frame-conversation] { display: none !important; }
 body[data-dsh-docking-preview] [data-dsh-docking-frame-rightbar] { display: block !important; grid-column: 3; grid-row: 1; }
 body[data-dsh-docking-preview] [data-sidebar-right-panel] { position: fixed !important; inset: 0 !important; width: 100% !important; transform: none !important; visibility: visible !important; }

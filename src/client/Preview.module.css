@@ -1,4 +1,6 @@
 .root {
+  display: flex;
+  flex-direction: column;
   position: absolute;
   inset: 0 0 0 auto;
   z-index: 10;
@@ -13,12 +15,14 @@
   z-index: 40;
 }
 
+.content { flex: 1; min-height: 0; }
+
+.frame[hidden] { display: none; }
+
 .frame { display: block; width: 100%; height: 100%; border: 0; }
 
 .actions {
-  position: absolute;
-  top: 4px;
-  right: 6px;
+  flex-shrink: 0;
   display: flex;
   gap: 4px;
   background: var(--dsw-alias-bg-base);
@@ -38,3 +42,37 @@
 }
 
 .actions button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.workspace {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.workspace span { flex-shrink: 0; }
+
+.workspace select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.status { padding: 4px 12px; font-size: 12px; overflow-wrap: anywhere; }
