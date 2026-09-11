@@ -106,7 +106,7 @@ export function createPreviewBridge(protocol = PREVIEW_MESSAGE, available = true
     state,
     setAvailable(value: boolean) {
       if (!value) selection++
-      state.set({ ...state.getSnapshot(), available: value, ...value ? {} : { expanded: false } })
+      state.set({ ...state.getSnapshot(), available: value, ...value ? {} : { expanded: false, pendingWorkspace: undefined } })
     },
     selectSession(sessionId: SessionId | undefined) {
       if (state.getSnapshot().sessionId === undefined && sessionId !== undefined) activate(sessionId)

@@ -8,7 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ISidebarRight } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import {
-  createPreviewBridge, forwardPreview, installPreviewFrame, PREVIEW_MESSAGE,
+  BOTTOM_MESSAGE, createPreviewBridge, forwardPreview, installPreviewFrame, PREVIEW_MESSAGE,
   previewCommand, PreviewToggle, SharedPreview, type PreviewProps,
 } from '../src/client/preview.tsx'
 
@@ -186,6 +186,48 @@ describe('shared preview', () => {
     resolve(S2)
     await disposed
     expect(bridge.state.getSnapshot().sessionIds).toEqual([S1])
+  })
+
+  it.each(['resolve', 'reject'])('restores workspace selection after disabling during a connection that later %ss', async outcome => {
+    const bridge = createPreviewBridge(BOTTOM_MESSAGE)
+    bridge.selectSession(S1)
+    bridge.show({ action: 'show' })
+    let resolve!: (id: SessionId) => void
+    let reject!: (error: Error) => void
+    const connect = vi.fn(() => new Promise<SessionId>((done, fail) => { resolve = done; reject = fail }))
+    const items = [A, { ...B, sessionIds: [] }]
+    const props = {
+      bridge, syncPresentation: vi.fn(), connectWorkspace: connect, width: 400, viewportWidth: 1280, canShow: true,
+      useWorkspaces: (selector: (value: unknown) => unknown) => selector({ items }),
+      t: (key: string) => key,
+      usePreview: (selector: (value: ReturnType<typeof bridge.state.getSnapshot>) => unknown) =>
+        useSyncExternalStore(bridge.state.subscribe, () => selector(bridge.state.getSnapshot())),
+    } as unknown as PreviewProps
+    const view = render(createElement(SharedPreview, { ...props, panel: 'bottom' }))
+    const selector = () => view.getByRole('combobox', { name: 'bottom.workspace' }) as HTMLSelectElement
+    fireEvent.change(selector(), { target: { value: B.workspaceId } })
+    expect(selector().disabled).toBe(true)
+    expect(view.queryByText('bottom.connecting')).not.toBeNull()
+
+    act(() => { bridge.setAvailable(false) })
+    expect(view.queryByRole('combobox')).toBeNull()
+    act(() => { bridge.setAvailable(true); bridge.show({ action: 'show' }) })
+    expect(selector().disabled).toBe(false)
+    expect(view.queryByText('bottom.connecting')).toBeNull()
+
+    await act(async () => {
+      if (outcome === 'resolve') resolve(S2)
+      else reject(new Error('Canceled connection failed'))
+    })
+    expect(bridge.state.getSnapshot()).toMatchObject({
+      sessionId: S1, sessionIds: [S1], pendingWorkspace: undefined, error: undefined,
+    })
+    expect(selector().disabled).toBe(false)
+    connect.mockImplementationOnce(async () => { items[1] = B; return S2 })
+    await act(async () => { fireEvent.change(selector(), { target: { value: B.workspaceId } }) })
+    expect(selector().value).toBe(B.workspaceId)
+    expect(selector().disabled).toBe(false)
+    expect(bridge.state.getSnapshot().sessionId).toBe(S2)
   })
 
   it('rejects malformed resource and tab commands', () => {
