@@ -207,6 +207,16 @@ body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
   opacity: 0.35;
 }
 
+.group:not([data-docking-layout-top-right]) [data-docking-preview-toggle],
+.group:not([data-docking-layout-top-right]) [data-docking-bottom-toggle] {
+  display: none;
+}
+
+.groupActions button[aria-pressed='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
 .openSelect {
   width: 64px;
   padding: 0 5px;
@@ -392,6 +402,11 @@ body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
 
   .groupActions button {
     width: 26px;
+  }
+
+  .group[data-active] [data-docking-preview-toggle],
+  .group[data-active] [data-docking-bottom-toggle] {
+    display: grid;
   }
 
   .openSelect {
