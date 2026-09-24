@@ -5,7 +5,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { DockingLayout, DockingLayoutFooterAction } from './DockingLayout.tsx'
 import {
   followFrameSession, frameSessionId, installFramePresentation, isFrameNavigateMessage,
-  isFrameReadyMessage, isFrameToggleSidebarMessage, isMountedFrameMessage,
+  isFrameToggleSidebarMessage, isMountedFrameMessage,
 } from './frame.ts'
 import { createDockingLayoutStore } from './stores.ts'
 import { en, zh, type DockingLayoutKey } from './locales.ts'
@@ -129,10 +129,6 @@ export function apply(ctx: ClientContext): void {
         ctx.layout.toggleSidebar()
         return
       }
-      if (!isFrameReadyMessage(event)) return
-      if (!isMountedFrameMessage(event, event.data.sessionId)) return
-      const current = mainSessionId(ctx.sessions.list.getSnapshot())
-      if (current !== undefined) ctx.uiWorkspace.openSession(current)
     }
     const unsubscribe = ctx.sessions.list.subscribe(openPendingNavigation)
     window.addEventListener('message', handleFrameMessage)

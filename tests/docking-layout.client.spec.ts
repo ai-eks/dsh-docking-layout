@@ -1324,8 +1324,9 @@ describe('plugin wiring', () => {
     expect(initial?.textContent).toBe('.root{color:blue}')
   })
 
-  it('registers only stock root slots and restores outer navigation after frame startup', async () => {
-    const open = vi.fn()
+  it('registers only stock root slots and preserves the active panel when a frame becomes ready', async () => {
+    let activePanel: string | null = null
+    const open = vi.fn(() => { activePanel = null })
     let outerSessions = sessions
     const outerListeners = new Set<() => void>()
     const disposeLocale = vi.fn()
@@ -1436,12 +1437,15 @@ describe('plugin wiring', () => {
     frameTwo.setAttribute('data-docking-layout-session-frame', S2)
     document.body.append(frameOne, frameTwo)
 
+    open.mockClear()
+    activePanel = 'settings'
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
       source: frameOne.contentWindow,
       data: { type: FRAME_READY_MESSAGE, sessionId: S1 },
     }))
-    expect(open).toHaveBeenCalledWith(S2)
+    expect(activePanel).toBe('settings')
+    expect(open).not.toHaveBeenCalled()
 
     open.mockClear()
     window.dispatchEvent(new MessageEvent('message', {
@@ -1574,6 +1578,7 @@ describe('plugin wiring', () => {
     expect(getComputedStyle(panelHost).display).not.toBe('none')
     expect(getComputedStyle(conversationParent).marginBottom).toBe('240px')
     workbenchStyle.remove()
+    await Promise.resolve()
     expect(open).toHaveBeenCalledWith(S1)
     expect(postFrameMessage).toHaveBeenCalledWith({
       type: FRAME_READY_MESSAGE,
@@ -1667,7 +1672,7 @@ describe('plugin wiring', () => {
     expect(nextDetailsParent.hasAttribute('data-dsh-docking-frame-rightbar')).toBe(false)
   })
 
-  it('retries an addressed frame Session when the list phase becomes ready', () => {
+  it('retries an addressed frame Session when the list phase becomes ready', async () => {
     let state: SessionListState = { ...sessions, phase: 'pending' }
     const listeners = new Set<() => void>()
     const open = vi.fn((id: SessionId) => {
@@ -1688,10 +1693,12 @@ describe('plugin wiring', () => {
     const postFrameMessage = vi.fn()
     const stop = followFrameSession(service as never, open, S1, postFrameMessage)
 
+    await Promise.resolve()
     expect(open).toHaveBeenCalledTimes(1)
     state = { ...state, phase: 'ready' }
     for (const listener of listeners) listener()
 
+    await Promise.resolve()
     expect(open).toHaveBeenCalledTimes(2)
     expect(open).toHaveBeenLastCalledWith(S1)
     expect(postFrameMessage).toHaveBeenCalledWith({
@@ -1701,7 +1708,7 @@ describe('plugin wiring', () => {
     stop()
   })
 
-  it('forwards each frame navigation while one addressed reopen remains pending', () => {
+  it('forwards each frame navigation while one addressed reopen remains pending', async () => {
     let state: SessionListState = { ...sessions, current: S1 }
     const listeners = new Set<() => void>()
     const open = vi.fn()
@@ -1735,9 +1742,89 @@ describe('plugin wiring', () => {
       sessionId: S3,
       replaceSource: false,
     })
+    await Promise.resolve()
     expect(open).toHaveBeenCalledTimes(1)
     expect(open).toHaveBeenCalledWith(S1)
     stop()
+  })
+
+  it('cancels a queued addressed reopen when the frame unmounts', async () => {
+    const listeners = new Set<() => void>()
+    const open = vi.fn()
+    const service = {
+      list: {
+        getSnapshot: () => runtimeSessions(sessions),
+        subscribe: (listener: () => void) => {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+      },
+    }
+    const stop = followFrameSession(service as never, open, S1, vi.fn())
+    stop()
+    await Promise.resolve()
+
+    expect(open).not.toHaveBeenCalled()
+    expect(listeners.size).toBe(0)
+  })
+
+  it('reselects its addressed Session after synchronous mainView retain and release', async () => {
+    for (const order of [[S1, S2], [S2, S1]]) {
+      const listeners = new Set<() => void>()
+      let state: SessionListState = {
+        ...runtimeSessions(sessions),
+        ids: order,
+        byId: Object.fromEntries(order.map(id => [
+          id, { ...sessions.byId[id], retainedBy: {} },
+        ])) as SessionListState['byId'],
+      }
+      let mainReference: SessionId | undefined
+      const changeRetention = (id: SessionId, delta: number): void => {
+        const row = state.byId[id]!
+        const count = (row.retainedBy.mainView ?? 0) + delta
+        state = {
+          ...state,
+          byId: {
+            ...state.byId,
+            [id]: { ...row, retainedBy: count > 0 ? { mainView: count } : {} },
+          },
+        }
+        for (const listener of listeners) listener()
+      }
+      // Match UiWorkspaceService.replaceMain: retaining the new Session notifies
+      // subscribers before mainReference changes and the old reference releases.
+      const open = vi.fn((id: SessionId) => {
+        changeRetention(id, 1)
+        const previous = mainReference
+        mainReference = id
+        if (previous !== undefined) changeRetention(previous, -1)
+      })
+      const service = {
+        list: {
+          getSnapshot: () => state,
+          subscribe: (listener: () => void) => {
+            listeners.add(listener)
+            return () => { listeners.delete(listener) }
+          },
+        },
+      }
+      open(S2)
+      const postFrameMessage = vi.fn()
+      const stop = followFrameSession(service as never, open, S2, postFrameMessage)
+      open(S1)
+      await Promise.resolve()
+
+      expect(mainReference).toBe(S2)
+      expect(mainSessionId(state)).toBe(S2)
+      expect(postFrameMessage).toHaveBeenCalledWith({
+        type: FRAME_NAVIGATE_MESSAGE,
+        sourceSessionId: S2,
+        sessionId: S1,
+        replaceSource: false,
+      })
+      stop()
+      expect(listeners.size).toBe(0)
+    }
   })
 
   it('keeps the Host half empty and registers its invariant companion', async () => {

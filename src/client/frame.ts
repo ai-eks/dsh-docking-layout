@@ -103,6 +103,7 @@ export function isMountedFrameMessage(
 /**
  * Keep an embedded DSH client on its addressed Session.
  * @param sessions - stock DSH Session service.
+ * @param openSession - stock Workspace navigation for the addressed Session.
  * @param sessionId - fixed frame address.
  * @returns the list subscription disposer.
  */
@@ -116,6 +117,19 @@ export function followFrameSession(
   let requestedPhase: SessionListState['phase'] | undefined
   let announced = false
   let lastNavigation: SessionId | undefined
+  let pendingOpen = false
+  let disposed = false
+  const scheduleOpen = (): void => {
+    if (pendingOpen) return
+    pendingOpen = true
+    // Retention notifications fire before UiWorkspace finishes replacing mainReference.
+    queueMicrotask(() => {
+      pendingOpen = false
+      if (disposed) return
+      const state = sessions.list.getSnapshot()
+      if (state.byId[sessionId] !== undefined && mainSessionId(state) !== sessionId) openSession(sessionId)
+    })
+  }
   const sync = (): void => {
     const state: SessionListState = sessions.list.getSnapshot()
     if (state.byId[sessionId] === undefined) return
@@ -139,7 +153,7 @@ export function followFrameSession(
       if (!requested || requestedPhase !== state.phase) {
         requested = true
         requestedPhase = state.phase
-        openSession(sessionId)
+        scheduleOpen()
       }
       return
     }
@@ -160,6 +174,7 @@ export function followFrameSession(
   const unsubscribe = sessions.list.subscribe(sync)
   sync()
   return () => {
+    disposed = true
     unsubscribe()
     window.removeEventListener('focus', announceFocus)
     window.removeEventListener('pointerdown', announceFocus, true)
