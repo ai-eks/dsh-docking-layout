@@ -8,7 +8,7 @@ import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
-import { FileTypeIcon, classifyFileType, IconChevronDownOutline14, IconChevronRightOutline14, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { FileTypeIcon, classifyFileType, IconChevronDownOutlineMedium, IconChevronRightOutlineMedium, IconRefreshOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from './WorkspaceFiles.module.css'
 
 type Listing = { ok: true; value: WorkspaceDirectoryListing } | { ok: false; error: { message: string } }
@@ -137,7 +137,7 @@ export function WorkspaceFiles({ useTabInfo, useWorkspaces, files, useTrees, t }
           <button className={css.row} type="button" disabled={entry.type === 'other'}
             aria-expanded={directory ? expanded : undefined}
             onClick={() => { if (directory) files.toggle(id, child); else open(tree, child) }}>
-            {directory ? expanded ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 /> : <span className={css.spacer} />}
+            {directory ? expanded ? <IconChevronDownOutlineMedium /> : <IconChevronRightOutlineMedium /> : <span className={css.spacer} />}
             <FileTypeIcon kind={directory ? 'folder' : classifyFileType(entry.name)} size={16} />
             <span>{entry.name}</span>
           </button>
@@ -151,7 +151,7 @@ export function WorkspaceFiles({ useTabInfo, useWorkspaces, files, useTrees, t }
     <div className={css.header}>
       <span>{t('files.workspaces')}</span>
       <button className={css.reload} type="button" aria-label={t('files.reload')}
-        onClick={() => { files.reload(tab.id, workspaces, tab.signal) }}><IconRefreshOutline16 /></button>
+        onClick={() => { files.reload(tab.id, workspaces, tab.signal) }}><IconRefreshOutlineMedium /></button>
     </div>
     <ul className={css.tree} aria-label={t('files.workspaces')} ref={restoreScroll}
       onScroll={event => { files.scroll.set(tab.id, event.currentTarget.scrollTop) }}>
@@ -163,7 +163,7 @@ export function WorkspaceFiles({ useTabInfo, useWorkspaces, files, useTrees, t }
         return <li key={workspace.workspaceId} data-files-workspace={workspace.workspaceId}>
           <button type="button" className={`${css.row} ${css.workspace}`} title={workspace.path}
             aria-expanded={expanded} onClick={() => { files.toggleWorkspace(tab.id, workspace, tab.signal) }}>
-            {expanded ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
+            {expanded ? <IconChevronDownOutlineMedium /> : <IconChevronRightOutlineMedium />}
             <FileTypeIcon kind="folder" size={16} />
             <span>{workspace.title}</span>
           </button>

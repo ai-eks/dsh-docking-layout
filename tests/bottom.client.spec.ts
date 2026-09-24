@@ -115,7 +115,8 @@ describe('shared bottom panel', () => {
     const unsubscribe = vi.fn()
     const service = { getSnapshot: () => snapshot, subscribeState: (next: () => void) => { listener = next; return unsubscribe } }
     const ctx = {
-      sessions: { list: { subscribe: () => vi.fn(), getSnapshot: () => ({ current: A, byId: { [A]: {} } }) } },
+      sessions: { list: { subscribe: () => vi.fn(), getSnapshot: () => ({ byId: { [A]: { id: A, retainedBy: { mainView: 1 } } } }) } },
+      uiWorkspace: { openSession: vi.fn() },
       sidebarRight: { openResource: vi.fn(), openTab: vi.fn() },
     } as unknown as Context
     const toggle = document.createElement('button')
@@ -149,7 +150,7 @@ describe('shared bottom panel', () => {
     const disposers: Array<() => void> = []
     const inject = vi.fn()
     const ctx = { inject, effect: (run: () => () => void) => disposers.push(run()),
-      sessions: { list: { getSnapshot: () => ({ current: A }), subscribe: () => vi.fn() } },
+      sessions: { list: { getSnapshot: () => ({ byId: { [A]: { id: A, retainedBy: { mainView: 1 } } } }), subscribe: () => vi.fn() } },
     } as unknown as Context
     const bridge = installSharedBottom(ctx)
     expect(bridge.state.getSnapshot()).toMatchObject({ available: false, sessionId: A, expanded: false })

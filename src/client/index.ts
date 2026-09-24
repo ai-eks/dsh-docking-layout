@@ -13,6 +13,7 @@ import { forwardPreview, installPreviewFrame, installSharedPreview, PREVIEW_MESS
 import { suspendEmbeddedHmr } from './embedded-hmr.ts'
 import { installBottomClient, installBottomProxy, installSharedBottom } from './bottom.tsx'
 import { installWorkspaceFiles } from './workspace-files.tsx'
+import { mainSessionId } from './main-session.ts'
 
 /** Retain client service augmentations in published declarations. */
 export type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -81,7 +82,7 @@ export function apply(ctx: ClientContext): void {
     })
     ctx.effect(installFramePresentation, 'docking-layout: embedded frame presentation')
     ctx.effect(
-      () => followFrameSession(ctx.sessions, addressedSession),
+      () => followFrameSession(ctx.sessions, id => ctx.uiWorkspace.openSession(id), addressedSession),
       'docking-layout: embedded frame Session selection',
     )
     ctx.effect(() => forwardPreview(ctx.sidebarRight, command => {
@@ -101,16 +102,17 @@ export function apply(ctx: ClientContext): void {
     const openPendingNavigation = (): void => {
       if (pendingNavigation === undefined) return
       const sessions = ctx.sessions.list.getSnapshot()
-      if (sessions.current === pendingNavigation) {
+      const current = mainSessionId(sessions)
+      if (current === pendingNavigation) {
         pendingNavigation = undefined
         requestedPhase = undefined
         requestedCurrent = undefined
         return
       }
       if (sessions.byId[pendingNavigation] === undefined) return
-      if (requestedPhase === sessions.phase && requestedCurrent === sessions.current) return
+      if (requestedPhase === sessions.phase && requestedCurrent === current) return
       requestedPhase = sessions.phase
-      requestedCurrent = sessions.current
+      requestedCurrent = current
       ctx.uiWorkspace.openSession(pendingNavigation)
     }
     const handleFrameMessage = (event: MessageEvent<unknown>): void => {
@@ -129,8 +131,8 @@ export function apply(ctx: ClientContext): void {
       }
       if (!isFrameReadyMessage(event)) return
       if (!isMountedFrameMessage(event, event.data.sessionId)) return
-      const current = ctx.sessions.list.getSnapshot().current
-      if (current !== undefined) ctx.sessions.open(current)
+      const current = mainSessionId(ctx.sessions.list.getSnapshot())
+      if (current !== undefined) ctx.uiWorkspace.openSession(current)
     }
     const unsubscribe = ctx.sessions.list.subscribe(openPendingNavigation)
     window.addEventListener('message', handleFrameMessage)
@@ -150,8 +152,9 @@ export function apply(ctx: ClientContext): void {
       startSession: (onStarted: (sessionId: SessionId | undefined) => void) => {
         const sessions = ctx.sessions.list.getSnapshot()
         const workspaces = ctx.workspaces.list.getSnapshot()
+        const current = mainSessionId(sessions)
         let target = workspaces.items.find(item => (
-          sessions.current !== undefined && item.sessionIds.includes(sessions.current)
+          current !== undefined && item.sessionIds.includes(current)
         ))?.workspaceId
         // Preserve DSH's current-or-most-recent Workspace selection policy.
         if (target === undefined && sessions.phase === 'ready' && workspaces.phase === 'ready') {
@@ -169,8 +172,7 @@ export function apply(ctx: ClientContext): void {
         }
         if (target === undefined) {
           onStarted(undefined)
-          ctx.sessions.clear()
-          ctx.layout.selectPanel(null)
+          ctx.uiWorkspace.startSession()
           return
         }
         // startSession() returns void; connectWorkspace() identifies this exact result.

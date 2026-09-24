@@ -6,12 +6,12 @@ interface IconProps {
 
 const Icon = ({ size }: IconProps): ReactNode => <span aria-hidden="true" data-size={size} />
 
-export const IconChevronDownOutline14 = Icon
-export const IconChevronRightOutline14 = Icon
-export const IconCloseFill14 = Icon
+export const IconChevronDownOutlineMedium = Icon
+export const IconChevronRightOutlineMedium = Icon
+export const IconCloseFillMedium = Icon
 export const IconCloseOutline16 = Icon
 export const IconPanelLeftOutline16 = Icon
-export const IconRefreshOutline16 = Icon
+export const IconRefreshOutlineMedium = Icon
 export const FileTypeIcon = Icon
 export const classifyFileType = () => 'file'
 

@@ -279,8 +279,9 @@ describe('shared preview', () => {
     const unsubscribe = vi.fn()
     const ctx = {
       sessions: {
-        list: { subscribe: () => unsubscribe, getSnapshot: () => ({ current: S1, byId: { [S1]: {} } }) },
+        list: { subscribe: () => unsubscribe, getSnapshot: () => ({ byId: { [S1]: { id: S1, retainedBy: { mainView: 1 } } } }) },
       },
+      uiWorkspace: { openSession: vi.fn() },
       sidebarRight: { active: () => expanded ? {} : undefined, isExpanded: () => expanded,
         toggleExpanded, openResource: vi.fn(), openTab: vi.fn() },
     } as unknown as Context
