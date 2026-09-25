@@ -30,6 +30,7 @@ import {
 } from '../src/client/layout.ts'
 import { zh } from '../src/client/locales.ts'
 import { createPreviewBridge } from '../src/client/preview.tsx'
+import { mainSessionId } from '../src/client/main-session.ts'
 import { createDockingLayoutStore } from '../src/client/stores.ts'
 
 const sid = (value: string): SessionId => value as SessionId
@@ -45,6 +46,29 @@ function bindSnapshotSelector<T>(source: HostObservable<T>): SnapshotSelectorHoo
     source.subscribe.bind(source),
     () => selector(source.getSnapshot()),
   )
+}
+
+/** Translate fixture navigation into the mainView retention published by 0.1.7. */
+function runtimeSessions(state: SessionListState): SessionListState {
+  const selected = (state as SessionListState & { current?: SessionId }).current
+  const byId = Object.fromEntries(Object.entries(state.byId).map(([id, row]) => [
+    id, { ...row, retainedBy: id === selected ? { mainView: 1 } : {} },
+  ])) as SessionListState['byId']
+  return { ...state, byId }
+}
+
+function bindSessionSnapshotSelector(source: HostObservable<SessionListState>): SnapshotSelectorHook<SessionListState> {
+  const cache = new WeakMap<SessionListState, SessionListState>()
+  const snapshot = (): SessionListState => {
+    const state = source.getSnapshot()
+    let translated = cache.get(state)
+    if (translated === undefined) {
+      translated = runtimeSessions(state)
+      cache.set(state, translated)
+    }
+    return translated
+  }
+  return selector => useSyncExternalStore(source.subscribe.bind(source), () => selector(snapshot()))
 }
 
 function makeTranslate(dict: Readonly<Record<string, string>>) {
@@ -80,6 +104,12 @@ const sessions: SessionListState = {
 const workspaces: WorkspaceListState = {
   items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
 }
+
+it('tracks the Session retained by the 0.1.7 main view', () => {
+  expect(mainSessionId(runtimeSessions(sessions))).toBe(S2)
+  expect(mainSessionId(runtimeSessions({ ...sessions, current: S3 }))).toBe(S3)
+  expect(mainSessionId(runtimeSessions({ ...sessions, current: undefined }))).toBeUndefined()
+})
 
 beforeEach(() => {
   localStorage.clear()
@@ -199,7 +229,7 @@ describe('DockingLayout', () => {
       usePanelInfo: ((selector: (state: { activePanelId: string | null }) => unknown) => (
         selector({ activePanelId })
       )) as DockingLayoutProps['usePanelInfo'],
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -233,7 +263,7 @@ describe('DockingLayout', () => {
     initialSurface.getBoundingClientRect = measureInitial
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -273,7 +303,7 @@ describe('DockingLayout', () => {
     const instance = createDockingLayoutStore().create()
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -355,7 +385,7 @@ describe('DockingLayout', () => {
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -392,7 +422,7 @@ describe('DockingLayout', () => {
     }, 'group-2', 3)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -437,7 +467,7 @@ describe('DockingLayout', () => {
     const view = render(createElement(StrictMode, null, createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
-        selector(extendedSessions)
+        selector(runtimeSessions(extendedSessions))
       )) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -491,7 +521,7 @@ describe('DockingLayout', () => {
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
-        selector(extendedSessions)
+        selector(runtimeSessions(extendedSessions))
       )) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -527,7 +557,7 @@ describe('DockingLayout', () => {
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
-        selector(singleTabSessions)
+        selector(runtimeSessions(singleTabSessions))
       )) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
@@ -600,7 +630,7 @@ describe('DockingLayout', () => {
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: bindSnapshotSelector(sessionSource),
+      useSessions: bindSessionSnapshotSelector(sessionSource),
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -655,7 +685,7 @@ describe('DockingLayout', () => {
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: bindSnapshotSelector(sessionSource),
+      useSessions: bindSessionSnapshotSelector(sessionSource),
       useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -725,7 +755,7 @@ describe('DockingLayout', () => {
     const startSession = vi.fn<DockingLayoutProps['startSession']>()
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -764,7 +794,7 @@ describe('DockingLayout', () => {
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: bindSnapshotSelector(sessionSource),
+      useSessions: bindSessionSnapshotSelector(sessionSource),
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
       )) as never,
@@ -821,7 +851,7 @@ describe('DockingLayout', () => {
     document.body.append(sidebar)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
       )) as never,
@@ -858,7 +888,7 @@ describe('DockingLayout', () => {
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(blankSessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(blankSessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -910,7 +940,7 @@ describe('DockingLayout', () => {
     }, 'group-1', 2)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: bindSnapshotSelector(sessionSource),
+      useSessions: bindSessionSnapshotSelector(sessionSource),
       useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -975,7 +1005,7 @@ describe('DockingLayout', () => {
     const view = render(createElement(DockingLayoutFooterAction, {
       wide: true,
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(workspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -1014,7 +1044,7 @@ describe('DockingLayout', () => {
     instance.actions.setEnabled(false)
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: bindSnapshotSelector(sessionSource),
+      useSessions: bindSessionSnapshotSelector(sessionSource),
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
       )) as never,
@@ -1059,7 +1089,7 @@ describe('DockingLayout', () => {
     }
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: bindSnapshotSelector(sessionSource),
+      useSessions: bindSessionSnapshotSelector(sessionSource),
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
       )) as never,
@@ -1099,7 +1129,7 @@ describe('DockingLayout', () => {
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
-        selector({ ...sessions, current: S1 })
+        selector(runtimeSessions({ ...sessions, current: S1 }))
       )) as never,
       useWorkspaces: bindSnapshotSelector(workspaceSource),
       useStore: bindSnapshotSelector(instance.store),
@@ -1130,7 +1160,7 @@ describe('DockingLayout', () => {
     }
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
-      useSessions: ((selector: (state: SessionListState) => unknown) => selector(sessions)) as never,
+      useSessions: ((selector: (state: SessionListState) => unknown) => selector(runtimeSessions(sessions))) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector(archivedWorkspaces)) as never,
       useStore: bindSnapshotSelector(instance.store),
       actions: instance.actions,
@@ -1150,7 +1180,7 @@ describe('DockingLayout', () => {
     const archivedView = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
-        selector({ ...sessions, current: S1 })
+        selector(runtimeSessions({ ...sessions, current: S1 }))
       )) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => selector({
         ...workspaces, archivedSessionIds: [S1],
@@ -1181,7 +1211,7 @@ describe('DockingLayout', () => {
     const subagentView = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
-        selector(subagentSessions)
+        selector(runtimeSessions(subagentSessions))
       )) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(workspaces)
@@ -1234,7 +1264,7 @@ describe('DockingLayout', () => {
     const view = render(createElement(DockingLayout, {
       usePanelInfo: selector => selector({ activePanelId: null }),
       useSessions: ((selector: (state: SessionListState) => unknown) => (
-        selector(visibleSessions)
+        selector(runtimeSessions(visibleSessions))
       )) as never,
       useWorkspaces: ((selector: (state: WorkspaceListState) => unknown) => (
         selector(groupedWorkspaces)
@@ -1294,8 +1324,9 @@ describe('plugin wiring', () => {
     expect(initial?.textContent).toBe('.root{color:blue}')
   })
 
-  it('registers only stock root slots and restores outer navigation after frame startup', async () => {
-    const open = vi.fn()
+  it('registers only stock root slots and preserves the active panel when a frame becomes ready', async () => {
+    let activePanel: string | null = null
+    const open = vi.fn(() => { activePanel = null })
     let outerSessions = sessions
     const outerListeners = new Set<() => void>()
     const disposeLocale = vi.fn()
@@ -1308,7 +1339,7 @@ describe('plugin wiring', () => {
       locale: { register: vi.fn(() => disposeLocale) },
       sessions: {
         list: {
-          getSnapshot: () => outerSessions,
+          getSnapshot: () => runtimeSessions(outerSessions),
           subscribe: (listener: () => void) => {
             outerListeners.add(listener)
             return () => { outerListeners.delete(listener) }
@@ -1327,7 +1358,7 @@ describe('plugin wiring', () => {
         }) },
       },
       sidebarRight: { openResource: vi.fn(), openTab: vi.fn() },
-      uiWorkspace: { connectWorkspace: vi.fn().mockResolvedValue(S4), openSession: open },
+      uiWorkspace: { connectWorkspace: vi.fn().mockResolvedValue(S4), openSession: open, startSession: vi.fn() },
       layout: {
         toggleSidebar: vi.fn(),
         selectPanel: vi.fn(),
@@ -1371,8 +1402,7 @@ describe('plugin wiring', () => {
     outerSessions = { ...sessions, current: undefined, phase: 'pending' }
     injected.startSession(onStarted)
     expect(onStarted).toHaveBeenLastCalledWith(undefined)
-    expect(ctx.sessions.clear).toHaveBeenCalledOnce()
-    expect(ctx.layout.selectPanel).toHaveBeenCalledWith(null)
+    expect(ctx.uiWorkspace.startSession).toHaveBeenCalledOnce()
     outerSessions = sessions
 
     const superseded = new AbortController()
@@ -1407,12 +1437,15 @@ describe('plugin wiring', () => {
     frameTwo.setAttribute('data-docking-layout-session-frame', S2)
     document.body.append(frameOne, frameTwo)
 
+    open.mockClear()
+    activePanel = 'settings'
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
       source: frameOne.contentWindow,
       data: { type: FRAME_READY_MESSAGE, sessionId: S1 },
     }))
-    expect(open).toHaveBeenCalledWith(S2)
+    expect(activePanel).toBe('settings')
+    expect(open).not.toHaveBeenCalled()
 
     open.mockClear()
     window.dispatchEvent(new MessageEvent('message', {
@@ -1500,7 +1533,7 @@ describe('plugin wiring', () => {
     })
     const sessionService = {
       list: {
-        getSnapshot: () => state,
+        getSnapshot: () => runtimeSessions(state),
         subscribe: (listener: () => void) => {
           listeners.add(listener)
           return () => { listeners.delete(listener) }
@@ -1533,7 +1566,7 @@ describe('plugin wiring', () => {
     expect(frameSessionId(`http://localhost/?dsh-docking-session=${S1}`, false)).toBeUndefined()
     expect(frameSessionId(`http://localhost/?dsh-docking-session=${S1}`, true)).toBe(S1)
     const postFrameMessage = vi.fn()
-    const stopFollowing = followFrameSession(sessionService as never, S1, postFrameMessage)
+    const stopFollowing = followFrameSession(sessionService as never, open, S1, postFrameMessage)
     const panelHost = document.createElement('div')
     panelHost.dataset.dshPanelHost = ''
     document.body.append(panelHost)
@@ -1545,6 +1578,7 @@ describe('plugin wiring', () => {
     expect(getComputedStyle(panelHost).display).not.toBe('none')
     expect(getComputedStyle(conversationParent).marginBottom).toBe('240px')
     workbenchStyle.remove()
+    await Promise.resolve()
     expect(open).toHaveBeenCalledWith(S1)
     expect(postFrameMessage).toHaveBeenCalledWith({
       type: FRAME_READY_MESSAGE,
@@ -1638,7 +1672,7 @@ describe('plugin wiring', () => {
     expect(nextDetailsParent.hasAttribute('data-dsh-docking-frame-rightbar')).toBe(false)
   })
 
-  it('retries an addressed frame Session when the list phase becomes ready', () => {
+  it('retries an addressed frame Session when the list phase becomes ready', async () => {
     let state: SessionListState = { ...sessions, phase: 'pending' }
     const listeners = new Set<() => void>()
     const open = vi.fn((id: SessionId) => {
@@ -1648,7 +1682,7 @@ describe('plugin wiring', () => {
     })
     const service = {
       list: {
-        getSnapshot: () => state,
+        getSnapshot: () => runtimeSessions(state),
         subscribe: (listener: () => void) => {
           listeners.add(listener)
           return () => { listeners.delete(listener) }
@@ -1657,12 +1691,14 @@ describe('plugin wiring', () => {
       open,
     }
     const postFrameMessage = vi.fn()
-    const stop = followFrameSession(service as never, S1, postFrameMessage)
+    const stop = followFrameSession(service as never, open, S1, postFrameMessage)
 
+    await Promise.resolve()
     expect(open).toHaveBeenCalledTimes(1)
     state = { ...state, phase: 'ready' }
     for (const listener of listeners) listener()
 
+    await Promise.resolve()
     expect(open).toHaveBeenCalledTimes(2)
     expect(open).toHaveBeenLastCalledWith(S1)
     expect(postFrameMessage).toHaveBeenCalledWith({
@@ -1672,13 +1708,13 @@ describe('plugin wiring', () => {
     stop()
   })
 
-  it('forwards each frame navigation while one addressed reopen remains pending', () => {
+  it('forwards each frame navigation while one addressed reopen remains pending', async () => {
     let state: SessionListState = { ...sessions, current: S1 }
     const listeners = new Set<() => void>()
     const open = vi.fn()
     const service = {
       list: {
-        getSnapshot: () => state,
+        getSnapshot: () => runtimeSessions(state),
         subscribe: (listener: () => void) => {
           listeners.add(listener)
           return () => { listeners.delete(listener) }
@@ -1687,7 +1723,7 @@ describe('plugin wiring', () => {
       open,
     }
     const postFrameMessage = vi.fn()
-    const stop = followFrameSession(service as never, S1, postFrameMessage)
+    const stop = followFrameSession(service as never, open, S1, postFrameMessage)
 
     state = { ...state, current: S2 }
     for (const listener of listeners) listener()
@@ -1706,9 +1742,89 @@ describe('plugin wiring', () => {
       sessionId: S3,
       replaceSource: false,
     })
+    await Promise.resolve()
     expect(open).toHaveBeenCalledTimes(1)
     expect(open).toHaveBeenCalledWith(S1)
     stop()
+  })
+
+  it('cancels a queued addressed reopen when the frame unmounts', async () => {
+    const listeners = new Set<() => void>()
+    const open = vi.fn()
+    const service = {
+      list: {
+        getSnapshot: () => runtimeSessions(sessions),
+        subscribe: (listener: () => void) => {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+      },
+    }
+    const stop = followFrameSession(service as never, open, S1, vi.fn())
+    stop()
+    await Promise.resolve()
+
+    expect(open).not.toHaveBeenCalled()
+    expect(listeners.size).toBe(0)
+  })
+
+  it('reselects its addressed Session after synchronous mainView retain and release', async () => {
+    for (const order of [[S1, S2], [S2, S1]]) {
+      const listeners = new Set<() => void>()
+      let state: SessionListState = {
+        ...runtimeSessions(sessions),
+        ids: order,
+        byId: Object.fromEntries(order.map(id => [
+          id, { ...sessions.byId[id], retainedBy: {} },
+        ])) as SessionListState['byId'],
+      }
+      let mainReference: SessionId | undefined
+      const changeRetention = (id: SessionId, delta: number): void => {
+        const row = state.byId[id]!
+        const count = (row.retainedBy.mainView ?? 0) + delta
+        state = {
+          ...state,
+          byId: {
+            ...state.byId,
+            [id]: { ...row, retainedBy: count > 0 ? { mainView: count } : {} },
+          },
+        }
+        for (const listener of listeners) listener()
+      }
+      // Match UiWorkspaceService.replaceMain: retaining the new Session notifies
+      // subscribers before mainReference changes and the old reference releases.
+      const open = vi.fn((id: SessionId) => {
+        changeRetention(id, 1)
+        const previous = mainReference
+        mainReference = id
+        if (previous !== undefined) changeRetention(previous, -1)
+      })
+      const service = {
+        list: {
+          getSnapshot: () => state,
+          subscribe: (listener: () => void) => {
+            listeners.add(listener)
+            return () => { listeners.delete(listener) }
+          },
+        },
+      }
+      open(S2)
+      const postFrameMessage = vi.fn()
+      const stop = followFrameSession(service as never, open, S2, postFrameMessage)
+      open(S1)
+      await Promise.resolve()
+
+      expect(mainReference).toBe(S2)
+      expect(mainSessionId(state)).toBe(S2)
+      expect(postFrameMessage).toHaveBeenCalledWith({
+        type: FRAME_NAVIGATE_MESSAGE,
+        sourceSessionId: S2,
+        sessionId: S1,
+        replaceSource: false,
+      })
+      stop()
+      expect(listeners.size).toBe(0)
+    }
   })
 
   it('keeps the Host half empty and registers its invariant companion', async () => {

@@ -1,6 +1,7 @@
 /** Same-origin frame mode used to host one independent stock DSH conversation. */
 import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { mainSessionId } from './main-session.ts'
 
 /** Query parameter that addresses the Session rendered by an embedded DSH client. */
 export const FRAME_SESSION_PARAM = 'dsh-docking-session'
@@ -102,11 +103,13 @@ export function isMountedFrameMessage(
 /**
  * Keep an embedded DSH client on its addressed Session.
  * @param sessions - stock DSH Session service.
+ * @param openSession - stock Workspace navigation for the addressed Session.
  * @param sessionId - fixed frame address.
  * @returns the list subscription disposer.
  */
 export function followFrameSession(
   sessions: ISessions,
+  openSession: (sessionId: SessionId) => void,
   sessionId: SessionId,
   postMessage: PostFrameMessage = postToParent,
 ): () => void {
@@ -114,29 +117,43 @@ export function followFrameSession(
   let requestedPhase: SessionListState['phase'] | undefined
   let announced = false
   let lastNavigation: SessionId | undefined
+  let pendingOpen = false
+  let disposed = false
+  const scheduleOpen = (): void => {
+    if (pendingOpen) return
+    pendingOpen = true
+    // Retention notifications fire before UiWorkspace finishes replacing mainReference.
+    queueMicrotask(() => {
+      pendingOpen = false
+      if (disposed) return
+      const state = sessions.list.getSnapshot()
+      if (state.byId[sessionId] !== undefined && mainSessionId(state) !== sessionId) openSession(sessionId)
+    })
+  }
   const sync = (): void => {
     const state: SessionListState = sessions.list.getSnapshot()
     if (state.byId[sessionId] === undefined) return
-    if (state.current !== sessionId) {
+    const current = mainSessionId(state)
+    if (current !== sessionId) {
       if (
         announced
-        && state.current !== undefined
-        && state.current !== lastNavigation
-        && state.byId[state.current] !== undefined
+        && current !== undefined
+        && current !== lastNavigation
+        && state.byId[current] !== undefined
       ) {
-        lastNavigation = state.current
+        lastNavigation = current
         postMessage({
           type: FRAME_NAVIGATE_MESSAGE,
           sourceSessionId: sessionId,
-          sessionId: state.current,
+          sessionId: current,
           replaceSource: state.byId[sessionId]?.blank === true
-            && state.byId[state.current]?.blank === true,
+            && state.byId[current]?.blank === true,
         })
       }
       if (!requested || requestedPhase !== state.phase) {
         requested = true
         requestedPhase = state.phase
-        sessions.open(sessionId)
+        scheduleOpen()
       }
       return
     }
@@ -157,6 +174,7 @@ export function followFrameSession(
   const unsubscribe = sessions.list.subscribe(sync)
   sync()
   return () => {
+    disposed = true
     unsubscribe()
     window.removeEventListener('focus', announceFocus)
     window.removeEventListener('pointerdown', announceFocus, true)

@@ -11,6 +11,7 @@ import {
   PreviewToggle, SharedPreview, type PreviewBridge, type PreviewInjected,
 } from './preview.tsx'
 import css from './Preview.module.css'
+import { mainSessionId } from './main-session.ts'
 
 /** Only the public state subscription contract of the optional companion plugin. */
 interface BottomService {
@@ -90,7 +91,7 @@ export function SharedBottom(props: BottomProps): ReactNode {
 export function installSharedBottom(ctx: Context): PreviewBridge {
   const bridge = createPreviewBridge(BOTTOM_MESSAGE, false)
   ctx.effect(() => {
-    const select = (): void => { bridge.selectSession(ctx.sessions.list.getSnapshot().current) }
+    const select = (): void => { bridge.selectSession(mainSessionId(ctx.sessions.list.getSnapshot())) }
     const unsubscribe = ctx.sessions.list.subscribe(select)
     select()
     window.addEventListener('message', bridge.receive)
@@ -127,7 +128,7 @@ export function installSharedBottom(ctx: Context): PreviewBridge {
 
 /** Show only the fixed owner's native bottom workbench inside this frame. */
 export function installBottomFrame(ctx: Context, service: BottomService, sessionId: SessionId): () => void {
-  const stopFollowing = followFrameSession(ctx.sessions, sessionId, () => {})
+  const stopFollowing = followFrameSession(ctx.sessions, id => ctx.uiWorkspace.openSession(id), sessionId, () => {})
   const removeFrame = installFramePresentation()
   const restorePreview = forwardPreview(ctx.sidebarRight, command => {
     window.parent.postMessage({ type: PREVIEW_MESSAGE, ...command }, window.location.origin)

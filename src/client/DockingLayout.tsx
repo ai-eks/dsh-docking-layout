@@ -8,7 +8,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
-  IconChevronDownOutline14, IconChevronRightOutline14, IconCloseFill14,
+  IconChevronDownOutlineMedium, IconChevronRightOutlineMedium, IconCloseFillMedium,
   StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { createDockingLayoutStore } from './stores.ts'
@@ -22,6 +22,7 @@ import {
   isFrameFocusMessage, isFrameNavigateMessage, isMountedFrameMessage, sessionFrameUrl,
 } from './frame.ts'
 import css from './DockingLayout.module.css'
+import { mainSessionId } from './main-session.ts'
 
 /** Retain slot and standard-prop augmentations in published declarations. */
 export type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -228,7 +229,7 @@ export function DockingLayout({
 }: DockingLayoutProps): ReactNode {
   const sessions = useSessions(state => state)
   const activePanelId = usePanelInfo(state => state.activePanelId)
-  const current = sessions.current
+  const current = mainSessionId(sessions)
   const workspaceState = useWorkspaces(state => state)
   const archivedSessionIds = workspaceState.archivedSessionIds
   const grid = useStore(state => state)
@@ -616,7 +617,7 @@ export function DockingLayout({
                       commit(result)
                     }}
                   >
-                    <IconCloseFill14 size={12} />
+                    <IconCloseFillMedium size={12} />
                   </button>
                 </div>
               )
@@ -658,7 +659,7 @@ export function DockingLayout({
               }
               onClick={() => { split('right') }}
             >
-              <IconChevronRightOutline14 />
+              <IconChevronRightOutlineMedium />
             </button>
             <button
               type="button"
@@ -670,7 +671,7 @@ export function DockingLayout({
               }
               onClick={() => { split('bottom') }}
             >
-              <IconChevronDownOutline14 />
+              <IconChevronDownOutlineMedium />
             </button>
             {bottom !== undefined && <PreviewToggle bridge={bottom} t={t} panel="bottom" />}
             <PreviewToggle bridge={preview} t={t} />

@@ -10,6 +10,7 @@ import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { followFrameSession, installFramePresentation, isMountedFrameMessage } from './frame.ts'
 import css from './Preview.module.css'
+import { mainSessionId } from './main-session.ts'
 
 export const PREVIEW_SESSION_PARAM = 'dsh-docking-preview'
 export const PREVIEW_MESSAGE = 'dsh-docking-layout:preview'
@@ -273,7 +274,7 @@ export function SharedPreview({ usePreview, useWorkspaces, bridge, connectWorksp
 export function installSharedPreview(ctx: Context): PreviewBridge {
   const bridge = createPreviewBridge()
   ctx.effect(() => {
-    const select = (): void => { bridge.selectSession(ctx.sessions.list.getSnapshot().current) }
+    const select = (): void => { bridge.selectSession(mainSessionId(ctx.sessions.list.getSnapshot())) }
     const unsubscribe = ctx.sessions.list.subscribe(select)
     select()
     window.addEventListener('message', bridge.receive)
@@ -301,7 +302,7 @@ export function installSharedPreview(ctx: Context): PreviewBridge {
 
 /** Mount the native Sidebar once, with one fixed Session as its lifetime owner. */
 export function installPreviewFrame(ctx: Context, sessionId: SessionId): () => void {
-  const stopFollowing = followFrameSession(ctx.sessions, sessionId, () => {})
+  const stopFollowing = followFrameSession(ctx.sessions, id => ctx.uiWorkspace.openSession(id), sessionId, () => {})
   const removeFrame = installFramePresentation()
   document.body.setAttribute('data-dsh-docking-preview', '')
   const style = document.createElement('style')
