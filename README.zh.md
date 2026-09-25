@@ -63,7 +63,7 @@ iframe 池会保留每个分组的活动 Tab，以及最近使用的 2 个非活
 
 ## 兼容性
 
-要求 DeepSeek Harness `^0.1.7-rc.1` 和 Cordis `^4.0.4`。本版本适配 DSH 0.1.7 的主视图 Session 保留与工作区导航接口。DSH 0.1.2 请使用插件 `0.1.2-rc.1`。
+要求 DeepSeek Harness `^0.1.7-rc.2` 和 Cordis `^4.0.4`。本版本适配 DSH 0.1.7 的主视图 Session 保留与工作区导航接口。DSH 0.1.2 请使用插件 `0.1.2-rc.1`。
 
 已与 `dsh-better-sidebar@0.21.1` 联合验证：启用后可使用共享底栏。使用 DSH 0.1.7 前，请先升级旧版配套插件。
 
