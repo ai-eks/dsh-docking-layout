@@ -63,7 +63,7 @@ Only layout preferences are stored locally. The plugin does not copy Session log
 
 ## Compatibility
 
-Requires DeepSeek Harness `^0.1.7-rc.1` and Cordis `^4.0.4`. This version follows the main-view Session retention and Workspace navigation contracts in DSH 0.1.7. For DSH 0.1.2, use plugin `0.1.2-rc.1`.
+Requires DeepSeek Harness `^0.1.7-rc.2` and Cordis `^4.0.4`. This version follows the main-view Session retention and Workspace navigation contracts in DSH 0.1.7. For DSH 0.1.2, use plugin `0.1.2-rc.1`.
 
 Tested with `dsh-better-sidebar@0.21.1`: the optional integration provides a shared bottom panel when the companion plugin is enabled. Upgrade older installations before using this plugin with DSH 0.1.7.
 
