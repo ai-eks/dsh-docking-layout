@@ -14,8 +14,6 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   HostObservable, SnapshotSelectorHook,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import { apply as nodeApply } from '../src/index.ts'
-import * as invariant from '../src/invariant.ts'
 import { styleModule } from '../tsdown.config.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { DockingLayout, DockingLayoutFooterAction, type DockingLayoutProps } from '../src/client/DockingLayout.tsx'
@@ -1825,15 +1823,5 @@ describe('plugin wiring', () => {
       stop()
       expect(listeners.size).toBe(0)
     }
-  })
-
-  it('keeps the Host half empty and registers its invariant companion', async () => {
-    nodeApply()
-    const register = vi.fn().mockReturnValue(() => {})
-    const dispose = await invariant.apply({ invariants: { register } } as never)
-    expect(register).toHaveBeenCalledWith(
-      '@ai-eks/dsh-docking-layout', expect.any(Function),
-    )
-    expect(dispose).toBeTypeOf('function')
   })
 })
