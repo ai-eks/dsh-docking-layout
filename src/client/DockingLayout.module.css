@@ -60,7 +60,7 @@
   background: var(--dsw-alias-bg-base);
 }
 
-.group[data-active] .groupHeader {
+.group[data-active] .tab[data-selected] {
   box-shadow: inset 0 2px 0 var(--dsw-alias-state-business-primary);
 }
 
@@ -91,8 +91,9 @@
 .tab {
   position: relative;
   display: flex;
-  flex: 0 1 180px;
+  flex: 0 1 auto;
   align-items: center;
+  width: max-content;
   min-width: 86px;
   max-width: 220px;
   border-right: 1px solid var(--dsw-alias-border-l2);
@@ -392,7 +393,6 @@ body[data-dsh-sidebar-collapsed] [data-docking-layout-top-right] .groupActions {
   }
 
   .tab {
-    flex-basis: 150px;
     min-width: 76px;
   }
 
