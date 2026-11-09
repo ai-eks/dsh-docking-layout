@@ -63,9 +63,11 @@ Only layout preferences are stored locally. The plugin does not copy Session log
 
 ## Compatibility
 
-Requires DeepSeek Harness `^0.2.1-rc.2` and Cordis `^4.0.5`. For DSH 0.2.0, use plugin `0.2.0-rc.2`; for DSH 0.1.7, use plugin `0.1.7-rc.1`; for DSH 0.1.2, use plugin `0.1.2-rc.1`.
+Requires DeepSeek Harness `^0.2.2-rc.1`, Cordis `~4.1.0`, and Node.js `>=24.9`. Embedded Sessions forward the DSH 0.2.2 sidebar opener to the outer page. The retired `./invariant` companion is no longer exported; remove any explicit references to it from custom profiles. For DSH 0.2.1, use plugin `0.2.1-rc.2`; for DSH 0.2.0, use plugin `0.2.0-rc.2`; for DSH 0.1.7, use plugin `0.1.7-rc.1`; for DSH 0.1.2, use plugin `0.1.2-rc.1`.
 
-For the optional shared bottom panel, use `dsh-better-sidebar@0.28.0` with DSH 0.2.1. Its bottom-panel integration has been checked against this plugin.
+For the optional shared bottom panel, use `dsh-better-sidebar@0.30.1`, which declares DSH `^0.2.2-rc.1` support. Upgrade older companion installations before using DSH 0.2.2; version 0.24.1 still depends on the removed runtime invariants package.
+
+DSH 0.2.2-rc.1 can log `Sidebar Session opening failed: ... is released` during embedded preview navigation when a native sidebar view is disposed before its Session finishes opening. The native sidebar logs that cancelled opening as an error; file previews remain usable.
 
 ## Development
 

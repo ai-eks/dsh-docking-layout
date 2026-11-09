@@ -246,6 +246,8 @@ body[data-dsh-docking-frame] [data-dsh-docking-frame-shell] {
 body[data-dsh-docking-frame] [data-dsh-docking-frame-sidebar],
 body[data-dsh-docking-frame] [data-dsh-docking-frame-rightbar],
 body[data-dsh-docking-frame] [data-shell-overlay],
+body[data-dsh-docking-frame] [data-shell-bottom],
+body[data-dsh-docking-frame] [data-sidebar-mask],
 body[data-dsh-docking-frame] [data-side='sidebar'],
 body[data-dsh-docking-frame] [data-sidebar-right-expand],
 body[data-dsh-docking-frame] [data-side='rightbar'] {
@@ -320,7 +322,7 @@ export function installFramePresentation(
   observer.observe(document.documentElement, { childList: true, subtree: true })
   const handleMobileToggle = (event: MouseEvent): void => {
     const target = event.target
-    if (!(target instanceof Element) || target.closest("button[data-mobile-nav='toggle']") === null) {
+    if (!(target instanceof Element) || target.closest('button[data-sidebar-opener]') === null) {
       return
     }
     event.preventDefault()

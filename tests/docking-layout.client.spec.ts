@@ -1554,10 +1554,20 @@ describe('plugin wiring', () => {
     const details = document.createElement('div')
     details.dataset.slot = 'rightbar'
     detailsParent.append(details)
+    const leading = document.createElement('div')
+    leading.dataset.shellLeading = ''
     const mobileToggle = document.createElement('button')
-    mobileToggle.dataset.mobileNav = 'toggle'
-    conversation.append(mobileToggle)
-    shell.append(sidebarParent, conversationParent, detailsParent)
+    mobileToggle.dataset.sidebarOpener = ''
+    const toggleIcon = document.createElement('span')
+    mobileToggle.append(toggleIcon)
+    leading.append(mobileToggle)
+    const openEmbeddedDrawer = vi.fn(() => { conversationParent.setAttribute('inert', '') })
+    mobileToggle.addEventListener('click', openEmbeddedDrawer)
+    const drawerMask = document.createElement('div')
+    drawerMask.dataset.sidebarMask = ''
+    const bottom = document.createElement('div')
+    bottom.dataset.shellBottom = ''
+    shell.append(sidebarParent, conversationParent, detailsParent, leading, drawerMask, bottom)
     root.append(shell)
     document.body.append(root)
 
@@ -1608,6 +1618,9 @@ describe('plugin wiring', () => {
     expect(conversationParent.hasAttribute('data-dsh-docking-frame-conversation')).toBe(true)
     expect(detailsParent.hasAttribute('data-dsh-docking-frame-rightbar')).toBe(true)
     expect(getComputedStyle(detailsParent).display).toBe('none')
+    expect(getComputedStyle(drawerMask).display).toBe('none')
+    expect(getComputedStyle(bottom).display).toBe('none')
+    expect(getComputedStyle(leading).display).not.toBe('none')
     const frameStyle = document.head.querySelector<HTMLStyleElement>(
       '[data-dsh-docking-frame-style]',
     )
@@ -1617,11 +1630,13 @@ describe('plugin wiring', () => {
     expect(frameStyle?.textContent).toMatch(
       /\[data-dsh-docking-frame-conversation\][^{]*\{[^}]*grid-row:\s*1\s*!important;/,
     )
-    expect(frameStyle?.textContent).not.toMatch(/button\[data-mobile-nav='toggle'\]/)
+    expect(frameStyle?.textContent).not.toMatch(/button\[data-sidebar-opener\]/)
     expect(frameStyle?.textContent).not.toMatch(/display:\s*block\s*!important/)
     const messageCount = postFrameMessage.mock.calls.length
-    expect(fireEvent.click(mobileToggle)).toBe(false)
+    expect(fireEvent.click(toggleIcon)).toBe(false)
     expect(postFrameMessage).toHaveBeenCalledWith({ type: FRAME_TOGGLE_SIDEBAR_MESSAGE })
+    expect(openEmbeddedDrawer).not.toHaveBeenCalled()
+    expect(conversationParent.hasAttribute('inert')).toBe(false)
 
     const querySelector = vi.spyOn(document, 'querySelector')
     const queryCount = querySelector.mock.calls.length
@@ -1657,7 +1672,9 @@ describe('plugin wiring', () => {
 
     stopFollowing()
     removePresentation()
-    fireEvent.click(mobileToggle)
+    nextShell.append(leading)
+    expect(fireEvent.click(toggleIcon)).toBe(true)
+    expect(openEmbeddedDrawer).toHaveBeenCalledOnce()
     expect(postFrameMessage).toHaveBeenCalledTimes(messageCount + 1)
     expect(document.body.hasAttribute('data-dsh-docking-frame')).toBe(false)
     expect(shell.hasAttribute('data-dsh-docking-frame-shell')).toBe(false)
